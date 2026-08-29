@@ -15,6 +15,25 @@ honestly. Add a third axis and the camera can no longer show you where the shot
 lands: a parabola coming toward you or going away from you reads as a vertical
 line.
 
+**Correction, after playtest.** That held while the preview was a row of dots
+guessing at a parabola. It is a swept cast now and tells you precisely where the
+shot lands — so the reason for withholding lateral aim was gone, and hitting
+anything off the centre line by orbiting to its exact bearing was, in the
+player's words, miserable.
+
+The drag is now pure AIM and both axes are independent: **sideways swings the
+machine (±24°), down raises the arm (6°–66°)**. That is 24.5m of lateral reach
+from a single orbit position, measured by `T12a`. Range came off the drag
+entirely — three values cannot come out of two axes without one fighting the
+others — and lives on the wheel, W/S, and a pair of buttons, persisting between
+shots because it is something you set once per face.
+
+Orbiting still matters: it decides which face you are looking at, which garrison
+is in reach, and what stands between you and them. It is just no longer the only
+way to move the shot sideways.
+
+**The original reasoning, kept because it is still why the arc is readable:**
+
 **So the third axis is not part of the throw.** The slingshot is exactly 2-DOF,
 like the original. The third axis is a *separate, deliberate, pre-shot
 decision*: you walk the siege camp around the fortress and choose which face to
@@ -58,6 +77,28 @@ speeds cannot reach anything close in on a small level. The sentry standing in
 the open on level one — the easiest target in the game — had no firing solution
 at all between the 6 and 66 degree limits, and the level was unwinnable for
 reasons that looked like level design and were actually units.
+
+## Reading the path
+
+A parabola drawn in mid-air over a 3D scene has no depth: coming toward you or
+going away from you it is the same handful of dots. The arc now casts a **ground
+track** — a line of marks directly beneath it — with faint uprights joining the
+two every few points. That is the standard fix for exactly this problem, and it
+is what turns "somewhere over there" into a readable distance.
+
+## Bodies
+
+Casualties leave one. Six jointed bodies — torso, head, two arms, two legs, five
+spherical joints — spawned with the impact velocity, red for the garrison and
+blue for your own. Eight on the field at once, oldest culled.
+
+The knight goes limp the moment he arrives. The ball keeps doing the physics (it
+is what punches through and carries the damage); the rig is swapped for a
+ragdoll, so what you *see* is a man hitting a wall.
+
+Ragdolls are decoration with physics: invisible to damage, to splash, to settle
+detection and to the audit. A flailing limb that could chip masonry would chew
+the castle down from the inside.
 
 ## The targets
 

@@ -21,6 +21,12 @@ export const LAUNCH_H = 3.2;
 export const SPEED_MIN = 22, SPEED_MAX = 46;
 export const SPEED_REF_R = 38;
 export const ELEV_MIN = 6 * Math.PI / 180, ELEV_MAX = 66 * Math.PI / 180;
+// Lateral aim. Originally the drag was strictly 2-DOF and the third axis was
+// the orbit alone, because a 3D arc you cannot read makes lateral aim useless.
+// The preview is a swept cast now and tells you exactly where the shot lands,
+// so that reason is gone — and orbiting to a soldier's exact bearing to hit
+// anything off the centre line was, in practice, miserable.
+export const YAW_MAX = 24 * Math.PI / 180;
 const CENTRE = new THREE.Vector3(0, 6, 0);
 const KNIGHT_R = 0.56;
 const SETTLE_SPEED = 0.42, SETTLE_HOLD = 0.5, SETTLE_MAX = 7.0;
@@ -73,7 +79,9 @@ export class Game {
     this.state = S.AIM;
     this.angle = 0;                // orbit angle: 0 = north, +PI/2 = east
     this.elev = 34 * Math.PI / 180;
-    this.power = 0.6;
+    this.yaw = 0;
+    // Power persists between shots: you set it once for a face and then aim.
+    if (this.power == null) this.power = 0.8;
     this.dragging = false;
     this.dived = false;
     this.score = 0;
@@ -113,16 +121,24 @@ export class Game {
     return new THREE.Vector3(Math.sin(this.angle) * R, 0, -Math.cos(this.angle) * R);
   }
 
+  // The radial direction: where the machine SITS on the ring, used for camera
+  // framing. Not necessarily where it is pointing.
   forward() {
     return new THREE.Vector3(-Math.sin(this.angle), 0, Math.cos(this.angle));
   }
 
+  // Where it is actually pointing, once the lateral trim is applied.
+  aimDir() {
+    const a = this.angle + this.yaw;
+    return new THREE.Vector3(-Math.sin(a), 0, Math.cos(a));
+  }
+
   muzzle() {
-    return this.launchPos().addScaledVector(this.forward(), 0.9).setY(LAUNCH_H);
+    return this.launchPos().addScaledVector(this.aimDir(), 0.9).setY(LAUNCH_H);
   }
 
   velocity() {
-    const f = this.forward();
+    const f = this.aimDir();
     const speed = this.speedMin + (this.speedMax - this.speedMin) * this.power;
     return new THREE.Vector3(
       f.x * Math.cos(this.elev), Math.sin(this.elev), f.z * Math.cos(this.elev)
@@ -141,13 +157,18 @@ export class Game {
     this._lastFace = f.name;
   }
 
-  // Slingshot: the drag's ANGLE sets elevation, its LENGTH sets power. Two
-  // degrees of freedom, exactly like the 2D original. The third axis is A/D.
+  // The drag is now pure AIM, and the two axes are independent: sideways swings
+  // the machine, down raises the arm. Power came off the drag because three
+  // values cannot come out of two axes without one of them fighting the others
+  // — and range is the thing you set once per face and then leave alone.
   setDrag(dx, dy) {
-    const len = Math.hypot(dx, dy);
-    this.power = clamp(len / 300, 0, 1);
-    const ang = Math.atan2(Math.max(0, dy), Math.abs(dx) + 0.0001);
-    this.elev = ELEV_MIN + (ELEV_MAX - ELEV_MIN) * clamp(ang / (Math.PI / 2), 0, 1);
+    this.yaw = clamp(dx / 300, -1, 1) * YAW_MAX;
+    this.elev = ELEV_MIN + (ELEV_MAX - ELEV_MIN) * clamp(dy / 280, 0, 1);
+  }
+
+  addPower(d) {
+    this.power = clamp(this.power + d, 0, 1);
+    return this.power;
   }
 
   // Ballistic preview, swept properly.
@@ -217,6 +238,7 @@ export class Game {
     this.settleT = 0;
     this.breaksThisShot = 0;
     this.killsThisShot = 0;
+    this.knightLimp = false;
     if (this.rd) {
       if (!this.knightMesh) this.knightMesh = this.rd.knightMesh();
       this.knightMesh.visible = true;
@@ -292,6 +314,16 @@ export class Game {
         if (this.sfx) (im.mat === 'timber' ? this.sfx.wood(s) : this.sfx.stone(s));
         // Hitstop on a genuinely big hit — it sells the mass of the knight.
         if (s > 0.95) this.hitstop = Math.max(this.hitstop, 0.055);
+        // The knight goes limp the moment he arrives. The ball keeps doing the
+        // physics (it is what punches through and carries the damage); the rig
+        // is swapped for a ragdoll so what you SEE is a man hitting a wall.
+        if (!this.knightLimp && this.knight && im.relV > 13) {
+          this.knightLimp = true;
+          const kv = this.knight.body.linvel();
+          const kt = this.knight.body.translation();
+          this.phys.spawnRagdoll(kt.x, kt.y, kt.z, kv, { tint: 'friend' });
+          if (this.knightMesh) this.knightMesh.visible = false;
+        }
       }
       P.impacts.length = 0;
     }
@@ -320,6 +352,7 @@ export class Game {
     const crushed = how !== 'struck';
     this.score += 500 + (crushed ? 150 : 0);
     if (this.rd) this.rd.popSoldier(t.x, t.y, t.z, v);
+    this.phys.spawnRagdoll(t.x, t.y, t.z, v, { tint: 'foe' });
     if (this.sfx) this.sfx.soldierDown(this.killsThisShot, crushed);
     // A multi-kill is the best thing that can happen; say so.
     if (this.killsThisShot >= 2) {
@@ -465,6 +498,7 @@ export class Game {
     const L = this.launchPos();
     rd.onager.position.copy(L);
     rd.onager.rotation.y = this.angle + Math.PI / 2;
+    if (rd.machine) rd.machine.rotation.y = -this.yaw;
     rd.setWaiting(this.knights);
     const rest = -0.5 - this.power * 0.85;
     const want = this.state === S.AIM ? rest : rd.armAngle;
@@ -516,6 +550,17 @@ export class Game {
     return { angle, elev, elevDeg: elev * 180 / Math.PI, power };
   }
 
+  // The lateral trim needed to point at a world point FROM WHERE THE MACHINE
+  // STANDS. Not the target's bearing from the castle centre — the launcher sits
+  // 20-38m off centre, so those two differ by several degrees and using the
+  // wrong one overshoots by metres.
+  yawTo(tx, tz) {
+    const L = this.launchPos();
+    const dx = tx - L.x, dz = tz - L.z;
+    const want = Math.atan2(-dx, dz);      // inverse of aimDir()
+    return Math.atan2(Math.sin(want - this.angle), Math.cos(want - this.angle));
+  }
+
   // Aim at a live soldier, searching the whole power range. A coarse list of
   // six powers missed shots that exist — the level looked unwinnable when it
   // was the search that was too thin.
@@ -533,6 +578,7 @@ export class Game {
 
   shoot(angle, elevDeg, power) {
     this.angle = angle;
+    this.yaw = 0;                     // the solver aims radially
     this.elev = elevDeg * Math.PI / 180;
     this.power = clamp(power, 0, 1);
     return this.fire();

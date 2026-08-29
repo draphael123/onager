@@ -82,6 +82,11 @@ function buildHud() {
 let hintT = 0;
 function hint(t, secs = 4) { $('hint').textContent = t; hintT = secs; }
 
+function syncPower() {
+  $('powerfill').style.width = (game.power * 100).toFixed(1) + '%';
+  $('powVal').textContent = (game.power * 100).toFixed(0) + '%';
+}
+
 function syncHud(dt) {
   for (let i = 0; i < kpips.length; i++)
     kpips[i].classList.toggle('spent', i >= game.knights);
@@ -163,7 +168,8 @@ function showBand(ax, ay, px, py) {
   for (const el of [ring, track, fill]) { el.setAttribute('cx', ax); el.setAttribute('cy', ay); }
   track.setAttribute('stroke-dasharray', GAUGE_C);
   fill.setAttribute('stroke-dasharray', GAUGE_C);
-  fill.setAttribute('stroke-dashoffset', GAUGE_C * (1 - game.power));
+  // The ring now shows how far the ARM is raised, since power left the drag.
+  fill.setAttribute('stroke-dashoffset', GAUGE_C * (1 - (game.elev - 0.1047) / 1.047));
   const hot = game.power > 0.86 ? '#c8443a' : game.power > 0.55 ? '#e0b25c' : '#7fa86a';
   fill.setAttribute('stroke', hot);
   cord.setAttribute('x1', ax); cord.setAttribute('y1', ay);
@@ -174,8 +180,9 @@ function showBand(ax, ay, px, py) {
   const r = $('readout');
   r.classList.add('on');
   r.style.left = px + 'px'; r.style.top = py + 'px';
-  r.innerHTML = `<b>${(game.elev * 180 / Math.PI).toFixed(0)}&deg;</b> &nbsp; ` +
-    `<b>${(game.power * 100).toFixed(0)}%</b>`;
+  const yawDeg = game.yaw * 180 / Math.PI;
+  r.innerHTML = `<b>${(game.elev * 180 / Math.PI).toFixed(0)}&deg;</b> up &nbsp; ` +
+    `<b>${yawDeg >= 0 ? '+' : ''}${yawDeg.toFixed(0)}&deg;</b> ${yawDeg >= 0 ? 'right' : 'left'}`;
 }
 
 function hideBand() {
@@ -219,7 +226,6 @@ function wireInput() {
     game.dragging = false;
     anchor = null;
     hideBand();
-    if (game.power < 0.06) { hint('Too soft — pull further back.'); return; }
     game.fire();
     buzz(26);
     if (game.knights === game.knightsTotal - 1) hint('SPACE or DIVE mid-flight for a lance dive.', 5);
@@ -235,6 +241,10 @@ function wireInput() {
     const k = e.key.toLowerCase();
     keys.add(k);
     if (k === ' ') { e.preventDefault(); if (playing) game.dive(); }
+    if (playing && game.state === S.AIM) {
+      if (k === 'w' || k === 'arrowup') { e.preventDefault(); bumpPower(0.04); }
+      if (k === 's' || k === 'arrowdown') { e.preventDefault(); bumpPower(-0.04); }
+    }
     if (k === 'r' && playing) restart();
     if (k === 'escape') togglePanel();
   });
@@ -257,6 +267,33 @@ function wireInput() {
   };
   holdBtn('tcL', -1);
   holdBtn('tcR', 1);
+  // Range is its own control now. Wheel, W/S, arrows, and buttons for touch.
+  const bumpPower = (d) => {
+    game.addPower(d);
+    syncPower();
+    sfx.tick(0.7 + game.power * 0.6);
+  };
+  addEventListener('wheel', (e) => {
+    if (!playing || game.state !== S.AIM) return;
+    e.preventDefault();
+    bumpPower(e.deltaY < 0 ? 0.04 : -0.04);
+  }, { passive: false });
+  const holdPow = (id, d) => {
+    const el = $(id);
+    let t = 0;
+    const go = (e) => {
+      e.preventDefault(); bumpPower(d);
+      clearInterval(t); t = setInterval(() => bumpPower(d), 110);
+    };
+    const stop = () => clearInterval(t);
+    el.addEventListener('pointerdown', go);
+    el.addEventListener('pointerup', stop);
+    el.addEventListener('pointerleave', stop);
+    el.addEventListener('pointercancel', stop);
+  };
+  holdPow('powUp', 0.04);
+  holdPow('powDown', -0.04);
+
   $('tcDive').addEventListener('pointerdown', (e) => {
     e.preventDefault(); sfx.resume(); if (playing && game.dive()) buzz(18);
   });

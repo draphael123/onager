@@ -19,13 +19,14 @@ Then open **http://localhost:5833**. No build step — three.js r170 and Rapier
 |---|---|
 | `A` / `D` | circle the fortress (this is the third axis) |
 | `Shift` + `A`/`D` | fine trim — line up on one pier, not one face |
-| drag | slingshot. The drag's **angle** sets elevation, its **length** sets power |
+| drag | aim. **Sideways** swings the machine ±24°, **down** raises the arm |
+| wheel / `W` `S` | range (persists between shots) |
 | `SPACE` | lance dive, once per shot, mid-flight |
 | `R` | restart |
 | `Esc` | settings |
 
-On a phone: drag to aim, the two arrows at the bottom circle the fortress,
-and DIVE is the second tap.
+On a phone: drag to aim, the two arrows at the bottom circle the fortress, the
++/&minus; buttons set range, and DIVE is the second tap.
 
 Put every soldier down — ride them down in person, or drop the building on them.
 Standards are a bonus, not a requirement.

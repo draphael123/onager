@@ -815,6 +815,7 @@ export class Renderer {
     if (p.kind === 'knight') return;
     if (p.kind === 'banner') { this._bannerMesh(p); return; }
     if (p.kind === 'soldier') { this._soldierMesh(p); return; }
+    if (p.kind === 'ragdoll') { this._ragdollMesh(p); return; }
 
     p.matName = p.kind === 'plinth' ? 'plinth' : p.mat;
     p.matIdx = (Math.random() * 7) | 0;
@@ -915,6 +916,35 @@ export class Renderer {
     this.syncPart(p);
   }
 
+  // Ragdoll limbs. Red surcoat for the garrison, blue for your own knights, so
+  // a heap on the ground still says whose it was.
+  _ragdollMesh(p) {
+    if (!this._rdMat) {
+      const mk = (c, r, m) => new THREE.MeshStandardMaterial({ color: c, roughness: r, metalness: m || 0 });
+      this._rdMat = {
+        foe: { body: mk(0xc4402f, 0.86), limb: mk(0x3a3330, 0.72), head: mk(0x9aa3ad, 0.38, 0.8) },
+        friend: { body: mk(0x2f5f8c, 0.86), limb: mk(0x3d4450, 0.6, 0.4), head: mk(0xb9c0c8, 0.32, 0.88) },
+      };
+      this._rdGeo = {
+        torso: new THREE.BoxGeometry(1, 1, 1),
+        head: new THREE.SphereGeometry(0.5, 9, 7),
+        arm: new THREE.CapsuleGeometry(0.34, 0.9, 3, 6),
+        leg: new THREE.CapsuleGeometry(0.34, 0.9, 3, 6),
+      };
+    }
+    const set = this._rdMat[p.tint === 'friend' ? 'friend' : 'foe'];
+    const mat = p.rdKind === 'head' ? set.head : p.rdKind === 'torso' ? set.body : set.limb;
+    const m = new THREE.Mesh(this._rdGeo[p.rdKind] || this._rdGeo.torso, mat);
+    if (p.rdKind === 'head') m.scale.setScalar(p.half.x * 2.4);
+    else if (p.rdKind === 'torso') m.scale.set(p.half.x * 2.2, p.half.y * 2.1, p.half.z * 2.4);
+    else m.scale.set(p.half.x * 2.4, p.half.y * 1.6, p.half.z * 2.4);
+    m.castShadow = true;
+    this.scene.add(m);
+    p.mesh = m;
+    this.meshes.set(p, m);
+    this.syncPart(p);
+  }
+
   syncPart(p) {
     const m = p.mesh; if (!m) return;
     // Damage tier. An integer compare on 360 parts per frame is free, and it
@@ -1012,23 +1042,28 @@ export class Renderer {
 
   _onager() {
     const g = new THREE.Group();
+    // Only the engine swivels with the lateral trim. Parenting the camp to it
+    // would swing the tents and the campfire every time you nudge the aim.
+    const machine = new THREE.Group();
+    g.add(machine);
+    this.machine = machine;
     const wood = new THREE.MeshStandardMaterial({ color: 0x6a4a2c, roughness: 0.86 });
     const iron = new THREE.MeshStandardMaterial({ color: 0x565c66, roughness: 0.42, metalness: 0.8 });
     const rope = new THREE.MeshStandardMaterial({ color: 0xa88b5c, roughness: 1 });
 
     const base = new THREE.Mesh(new THREE.BoxGeometry(3.4, 0.42, 2.2), wood);
-    base.position.y = 0.55; g.add(base);
+    base.position.y = 0.55; machine.add(base);
     for (const s of [-1, 1]) {
       const rail = new THREE.Mesh(new THREE.BoxGeometry(3.6, 0.26, 0.3), wood);
-      rail.position.set(0, 0.9, s * 0.9); g.add(rail);
+      rail.position.set(0, 0.9, s * 0.9); machine.add(rail);
       const wheel = new THREE.Mesh(new THREE.CylinderGeometry(0.62, 0.62, 0.3, 12), wood);
-      wheel.rotation.x = Math.PI / 2; wheel.position.set(-1.0, 0.62, s * 1.16); g.add(wheel);
-      const wheel2 = wheel.clone(); wheel2.position.x = 1.2; g.add(wheel2);
+      wheel.rotation.x = Math.PI / 2; wheel.position.set(-1.0, 0.62, s * 1.16); machine.add(wheel);
+      const wheel2 = wheel.clone(); wheel2.position.x = 1.2; machine.add(wheel2);
       const post = new THREE.Mesh(new THREE.BoxGeometry(0.28, 1.9, 0.28), wood);
-      post.position.set(-0.2, 1.75, s * 0.72); post.rotation.x = s * 0.12; g.add(post);
+      post.position.set(-0.2, 1.75, s * 0.72); post.rotation.x = s * 0.12; machine.add(post);
     }
     const skein = new THREE.Mesh(new THREE.CylinderGeometry(0.34, 0.34, 1.7, 10), rope);
-    skein.rotation.z = Math.PI / 2; skein.position.set(-0.2, 1.0, 0); g.add(skein);
+    skein.rotation.z = Math.PI / 2; skein.position.set(-0.2, 1.0, 0); machine.add(skein);
 
     // The arm is animated on release — it's the only thing that tells you the
     // shot actually left the machine.
@@ -1038,13 +1073,13 @@ export class Renderer {
     const bowl = new THREE.Mesh(new THREE.CylinderGeometry(0.44, 0.3, 0.3, 10, 1, true), iron);
     bowl.position.y = 2.9; arm.add(bowl);
     arm.position.set(-0.2, 1.0, 0);
-    g.add(arm);
+    machine.add(arm);
     this.arm = arm;
     this.armRest = -0.5;
     this.armAngle = this.armRest;
 
     const stop = new THREE.Mesh(new THREE.BoxGeometry(0.4, 0.5, 1.9), wood);
-    stop.position.set(1.5, 1.4, 0); g.add(stop);
+    stop.position.set(1.5, 1.4, 0); machine.add(stop);
 
     g.traverse(o => { if (o.isMesh) { o.castShadow = true; o.receiveShadow = true; } });
     this.scene.add(g);
@@ -1052,10 +1087,10 @@ export class Renderer {
 
     // A pennant on the machine, so the launch site is findable at any orbit.
     const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.05, 3.4, 6), wood);
-    pole.position.set(-1.6, 2.2, -0.9); g.add(pole);
+    pole.position.set(-1.6, 2.2, -0.9); machine.add(pole);
     const flag = new THREE.Mesh(new THREE.PlaneGeometry(0.9, 0.5),
       new THREE.MeshStandardMaterial({ color: 0x2f5f8c, side: THREE.DoubleSide, roughness: 0.9 }));
-    flag.position.set(-1.15, 3.5, -0.9); g.add(flag);
+    flag.position.set(-1.15, 3.5, -0.9); machine.add(flag);
     this.flag = flag;
 
     this._camp(g, wood, iron);
@@ -1207,6 +1242,31 @@ export class Renderer {
     this.mkFoot.visible = false;
     this.scene.add(this.mkFoot);
 
+    // The arc's shadow on the ground, and a few uprights joining the two.
+    //
+    // A parabola drawn in mid-air over a 3D scene has no depth: coming toward
+    // you or going away from you it is the same handful of dots. Its ground
+    // track is the cue that fixes that, and it is the standard fix for exactly
+    // this reason.
+    this.trail = [];
+    const tg = new THREE.CircleGeometry(0.3, 12).rotateX(-Math.PI / 2);
+    for (let i = 0; i < 64; i++) {
+      const m = new THREE.Mesh(tg, new THREE.MeshBasicMaterial({
+        color: 0x241f14, transparent: true, opacity: 0.45, depthWrite: false, fog: false }));
+      m.visible = false; m.renderOrder = 3;
+      this.scene.add(m);
+      this.trail.push(m);
+    }
+    this.risers = [];
+    const rg = new THREE.CylinderGeometry(0.018, 0.018, 1, 4);
+    for (let i = 0; i < 9; i++) {
+      const m = new THREE.Mesh(rg, new THREE.MeshBasicMaterial({
+        color: 0xe0b25c, transparent: true, opacity: 0.3, depthWrite: false, fog: false }));
+      m.visible = false; m.renderOrder = 3;
+      this.scene.add(m);
+      this.risers.push(m);
+    }
+
     this._mkUp = new THREE.Vector3(0, 0, 1);
     this._mkN = new THREE.Vector3();
   }
@@ -1223,6 +1283,28 @@ export class Renderer {
         d.material.opacity = 0.92 - f * 0.5;
       } else d.visible = false;
     }
+
+    // Ground track, and uprights every eighth point.
+    for (let i = 0; i < this.trail.length; i++) {
+      const t = this.trail[i];
+      if (i < pts.length) {
+        t.visible = true;
+        t.position.set(pts[i].x, 0.035, pts[i].z);
+        const f = i / Math.max(1, pts.length - 1);
+        const sc = 1 - f * 0.4;
+        t.scale.set(sc, 1, sc);
+        t.material.opacity = 0.5 - f * 0.22;
+      } else t.visible = false;
+    }
+    let ri = 0;
+    for (let i = 3; i < pts.length && ri < this.risers.length; i += 7) {
+      const r = this.risers[ri++];
+      const h = Math.max(0.1, pts[i].y);
+      r.visible = true;
+      r.position.set(pts[i].x, h / 2, pts[i].z);
+      r.scale.set(1, h, 1);
+    }
+    for (; ri < this.risers.length; ri++) this.risers[ri].visible = false;
 
     if (!hit) { this.marker.visible = false; this.mkDrop.visible = false; this.mkFoot.visible = false; return; }
 
@@ -1258,6 +1340,8 @@ export class Renderer {
 
   hideArc() {
     for (const d of this.dots) d.visible = false;
+    if (this.trail) for (const t of this.trail) t.visible = false;
+    if (this.risers) for (const r of this.risers) r.visible = false;
     if (this.marker) this.marker.visible = false;
     if (this.mkDrop) this.mkDrop.visible = false;
     if (this.mkFoot) this.mkFoot.visible = false;

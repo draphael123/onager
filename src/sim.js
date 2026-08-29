@@ -8,7 +8,7 @@
 // Everything here runs with renderer = null, so it measures the simulation and
 // not the presentation.
 
-import { Game, S, SPEED_MIN, SPEED_MAX } from './game.js';
+import { Game, S, SPEED_MIN, SPEED_MAX, YAW_MAX } from './game.js';
 import { LEVELS } from './levels.js';
 import { seed } from './rand.js';
 
@@ -343,6 +343,75 @@ export async function runSim(log = console.log) {
     ok('T11b and it is where the knight actually lands', worst < 1.0,
       `worst ${worst.toFixed(2)}m (${worstAt})`);
   }
+  await breathe();
+
+  // ---- T12 lateral aim actually reaches off-centre targets -----------------
+  // The complaint that prompted this: soldiers to the left and right of the
+  // centre line were miserable to hit, because every shot flew radially through
+  // the middle and you had to orbit to a target's exact bearing. This checks
+  // that from ONE orbit position the lateral trim sweeps a real width, and that
+  // a soldier well off the bearing becomes reachable without orbiting.
+  {
+    const g = fresh(31);
+    g.angle = N; g.power = 0.85; g.elev = 20 * Math.PI / 180;
+    let minX = 1e9, maxX = -1e9;
+    for (const yawF of [-1, -0.5, 0, 0.5, 1]) {
+      g.yaw = yawF * YAW_MAX;
+      const h = g.arc().hit;
+      if (h) { minX = Math.min(minX, h.x); maxX = Math.max(maxX, h.x); }
+    }
+    const width = maxX - minX;
+    ok('T12a the trim sweeps a useful width', width > 12,
+      `${width.toFixed(1)}m of lateral reach from one orbit position`);
+
+    // A soldier whose bearing is well off the face, hit without orbiting.
+    g.angle = N; g.yaw = 0;
+    // yawTo(), NOT the bearing from the castle centre: the machine stands 20-38m
+    // off centre, so those two differ by several degrees and aiming with the
+    // wrong one overshoots by metres.
+    const off = g.soldiers.filter(s => !s.dead)
+      .map(s => { const t = s.body.translation(); return { s, t, y: g.yawTo(t.x, t.z) }; })
+      .filter(o => Math.abs(o.y) > 0.1 && Math.abs(o.y) < YAW_MAX)
+      .sort((a, b) => Math.abs(b.y) - Math.abs(a.y))[0];
+    let reached = false;
+    if (off) {
+      g.yaw = off.y;
+      for (let e = 6; e <= 50 && !reached; e += 1) {
+        for (const pw of [0.6, 0.7, 0.8, 0.9, 1.0]) {
+          g.elev = e * Math.PI / 180; g.power = pw;
+          const h = g.arc().hit;
+          if (h && h.kind === 'soldier') { reached = true; break; }
+        }
+      }
+    }
+    ok('T12b an off-bearing soldier is reachable without orbiting',
+      !off || reached, off ? `${off.s.post} at ${(off.y * 180 / Math.PI).toFixed(0)}deg of trim` : 'none off-bearing');
+    g.phys.dispose();
+  }
+
+  await breathe();
+
+  // ---- T13 ragdolls are decoration, not structure -------------------------
+  // Six jointed bodies per casualty, up to eight casualties on the field. They
+  // must not damage the castle, must not hold the settle check open, and must
+  // not grow without bound.
+  {
+    const g = fresh(88);
+    for (const f of ['north', 'south', 'east']) {
+      if (g.state !== S.AIM) break;
+      g.shoot(FACE_ANGLE[f], BEST[f].elev, BEST[f].power);
+      g.settleOut(14);
+    }
+    const rag = g.phys.list.filter(p => p.kind === 'ragdoll');
+    ok('T13a casualties leave bodies', rag.length > 0, `${rag.length} limbs`);
+    ok('T13b and the count is capped', g.phys.ragdolls.length <= 8,
+      `${g.phys.ragdolls.length} ragdolls`);
+    ok('T13c shots still resolve with ragdolls on the field',
+      g.state === S.AIM || g.state === S.OVER, g.state);
+    g.phys.dispose();
+  }
+
+
 
   const summary = `\n${pass} passed, ${fail} failed`;
   out.push(summary); log(summary);

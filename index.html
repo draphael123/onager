@@ -79,11 +79,24 @@
   #readout.on{opacity:1}
   #readout b{color:#e0b25c;font-weight:400}
 
-  #bottom{display:flex;flex-direction:column;align-items:center;gap:10px}
-  #power{width:min(300px,52vw);height:5px;background:rgba(233,226,210,.14);border-radius:3px;
-    overflow:hidden;opacity:0;transition:opacity .18s}
-  #power.on{opacity:1}
-  #powerfill{height:100%;width:0%;background:linear-gradient(90deg,#7fa86a,#e0b25c 55%,#c8443a)}
+  #bottom{display:flex;flex-direction:column;align-items:center;gap:9px}
+  /* Power is its own control now — it is set once for a face and left alone,
+     so it is always on screen rather than only while dragging. */
+  #powerRow{display:flex;align-items:center;gap:12px;pointer-events:auto;opacity:0;
+    transition:opacity .2s}
+  #powerRow.on{opacity:1}
+  #powerRow .plbl{font-size:9px;letter-spacing:.24em;text-transform:uppercase;color:#7d7590}
+  #powerRow .pval{font-size:13px;color:#e0b25c;font-variant-numeric:tabular-nums;min-width:38px;
+    text-align:right}
+  .pbtn{width:30px;height:30px;border-radius:50%;background:rgba(20,18,28,.5);
+    border:1px solid rgba(224,178,92,.4);color:#e0b25c;font:inherit;font-size:17px;line-height:1;
+    cursor:pointer;display:flex;align-items:center;justify-content:center;
+    -webkit-tap-highlight-color:transparent;user-select:none;transition:all .12s;flex:none}
+  .pbtn:hover,.pbtn:active{background:#e0b25c;color:#1b1a24}
+  #power{width:min(230px,40vw);height:6px;background:rgba(233,226,210,.14);border-radius:3px;
+    overflow:hidden}
+  #powerfill{height:100%;width:0%;background:linear-gradient(90deg,#7fa86a,#e0b25c 55%,#c8443a);
+    transition:width .08s linear}
   #hint{font-size:12px;letter-spacing:.12em;color:#8b83a0;text-align:center;min-height:17px;
     transition:opacity .3s}
 
@@ -265,7 +278,13 @@
     </div>
   </div>
   <div id="bottom">
-    <div id="power"><div id="powerfill"></div></div>
+    <div id="powerRow">
+      <span class="plbl">Range</span>
+      <button class="pbtn" id="powDown">&minus;</button>
+      <div id="power"><div id="powerfill"></div></div>
+      <button class="pbtn" id="powUp">+</button>
+      <span class="pval" id="powVal">80%</span>
+    </div>
     <div id="hint"></div>
   </div>
 </div>
@@ -283,7 +302,8 @@
 
 <div id="keys">
   <div><b>A</b> / <b>D</b> &mdash; circle the fortress</div>
-  <div><b>drag</b> &mdash; aim and pull back</div>
+  <div><b>drag</b> &mdash; aim: sideways swings, down lifts</div>
+  <div><b>wheel</b> / <b>W</b> <b>S</b> &mdash; range</div>
   <div><b>space</b> &mdash; lance dive, in flight</div>
   <div><b>R</b> &mdash; restart</div>
 </div>

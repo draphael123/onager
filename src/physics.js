@@ -59,6 +59,7 @@ export class Physics {
     this.parts = new Map();   // collider handle -> part record
     this.list = [];           // every live part, in creation order
     this.debris = [];
+    this.ragdolls = [];      // groups of jointed parts, oldest culled first
     this.time = 0;
 
     // Filled each step, drained by the renderer. Kept as plain data so the
@@ -209,6 +210,79 @@ export class Physics {
     return part;
   }
 
+  // A jointed ragdoll: torso, head, two arms, two legs, spherical joints.
+  //
+  // Six bodies and five joints is enough to read as a body going limp, and
+  // cheap enough that eight of them can be on the field at once. The parts are
+  // marked 'ragdoll' so they are invisible to damage, to settle detection and
+  // to the audit — they are decoration with physics, not structure.
+  spawnRagdoll(x, y, z, vel, opts = {}) {
+    const tint = opts.tint || 'foe';
+    const grp = { parts: [], born: this.time, tint };
+    const V = vel || { x: 0, y: 0, z: 0 };
+    const jitter = () => (rnd(0, 1) - 0.5) * 3.2;
+
+    const piece = (px, py, pz, hx, hy, hz, rdKind, density) => {
+      const bd = RAPIER.RigidBodyDesc.dynamic()
+        .setTranslation(x + px, y + py, z + pz)
+        .setLinearDamping(0.14).setAngularDamping(0.28)
+        .setLinvel(V.x * 0.55 + jitter(), V.y * 0.55 + jitter(), V.z * 0.55 + jitter())
+        .setAngvel({ x: jitter() * 2, y: jitter() * 2, z: jitter() * 2 });
+      const body = this.world.createRigidBody(bd);
+      const cd = RAPIER.ColliderDesc.cuboid(hx, hy, hz)
+        .setDensity(density).setFriction(0.85).setRestitution(0.04);
+      // No contact events: a flailing ragdoll would otherwise spam the damage
+      // system and chew the castle down from the inside.
+      const col = this.world.createCollider(cd, body);
+      const part = {
+        body, col, fixed: false, kind: 'ragdoll', rdKind, mat: 'soldier', tint,
+        hp: 1e9, maxHp: 1e9, half: { x: hx, y: hy, z: hz },
+        spawnX: x + px, spawnY: y + py, spawnZ: z + pz,
+        up0: null, dead: false, mesh: null, debris: true, born: this.time,
+      };
+      this.parts.set(col.handle, part);
+      this.list.push(part);
+      grp.parts.push(part);
+      if (this.onAdd) this.onAdd(part);
+      return part;
+    };
+
+    const torso = piece(0, 0.06, 0, 0.2, 0.28, 0.14, 'torso', 1.0);
+    const head = piece(0, 0.5, 0, 0.15, 0.15, 0.15, 'head', 0.8);
+    const armL = piece(-0.3, 0.1, 0, 0.08, 0.22, 0.08, 'arm', 0.6);
+    const armR = piece(0.3, 0.1, 0, 0.08, 0.22, 0.08, 'arm', 0.6);
+    const legL = piece(-0.12, -0.42, 0, 0.09, 0.26, 0.09, 'leg', 0.9);
+    const legR = piece(0.12, -0.42, 0, 0.09, 0.26, 0.09, 'leg', 0.9);
+
+    const join = (a, b, pa, pb) => {
+      try {
+        const jd = RAPIER.JointData.spherical(pa, pb);
+        this.world.createImpulseJoint(jd, a.body, b.body, true);
+      } catch (e) { /* a joint that will not build is better skipped than fatal */ }
+    };
+    join(torso, head, { x: 0, y: 0.3, z: 0 }, { x: 0, y: -0.16, z: 0 });
+    join(torso, armL, { x: -0.2, y: 0.2, z: 0 }, { x: 0, y: 0.22, z: 0 });
+    join(torso, armR, { x: 0.2, y: 0.2, z: 0 }, { x: 0, y: 0.22, z: 0 });
+    join(torso, legL, { x: -0.12, y: -0.28, z: 0 }, { x: 0, y: 0.26, z: 0 });
+    join(torso, legR, { x: 0.12, y: -0.28, z: 0 }, { x: 0, y: 0.26, z: 0 });
+
+    this.ragdolls.push(grp);
+    while (this.ragdolls.length > 8) {
+      const old = this.ragdolls.shift();
+      for (const q of old.parts) this.remove(q);
+    }
+    return grp;
+  }
+
+  _cullRagdolls() {
+    for (let i = this.ragdolls.length - 1; i >= 0; i--) {
+      const g = this.ragdolls[i];
+      if (this.time - g.born < 26) continue;
+      for (const q of g.parts) this.remove(q);
+      this.ragdolls.splice(i, 1);
+    }
+  }
+
   remove(part) {
     if (part.dead) return;
     part.dead = true;
@@ -287,6 +361,7 @@ export class Physics {
 
     this._checkBanners();
     this._checkSoldiers();
+    this._cullRagdolls();
     this._cullDebris();
   }
 
@@ -294,7 +369,7 @@ export class Physics {
     const r2 = r * r;
     for (let i = this.list.length - 1; i >= 0; i--) {
       const p = this.list[i];
-      if (p === skip || p.fixed || p.dead || p.kind === 'debris') continue;
+      if (p === skip || p.fixed || p.dead || p.kind === 'debris' || p.kind === 'ragdoll') continue;
       const t = p.body.translation();
       const dx = t.x - at.x, dy = t.y - at.y, dz = t.z - at.z;
       const d2 = dx * dx + dy * dy + dz * dz;
@@ -304,7 +379,7 @@ export class Physics {
   }
 
   _hurt(p, dmg) {
-    if (p.dead || p.fixed || p.kind === 'knight' || dmg <= 0) return;
+    if (p.dead || p.fixed || p.kind === 'knight' || p.kind === 'ragdoll' || dmg <= 0) return;
     // A standard cannot be destroyed, only felled — cloth does not shatter, and
     // letting a direct hit break one put the skittles line straight back. But
     // ramming a standard has to DO something, or the east curtain shot lands on
@@ -435,7 +510,7 @@ export class Physics {
     let m = 0;
     for (const p of this.list) {
       if (p.fixed || p.dead || p.kind === 'debris' || p.kind === 'knight' ||
-          p.kind === 'soldier') continue;
+          p.kind === 'soldier' || p.kind === 'ragdoll') continue;
       const v = p.body.linvel(), w = p.body.angvel();
       m = Math.max(m, Math.hypot(v.x, v.y, v.z) + 0.22 * Math.hypot(w.x, w.y, w.z));
     }
@@ -445,7 +520,7 @@ export class Physics {
   allAsleep() {
     for (const p of this.list) {
       if (p.fixed || p.dead || p.kind === 'debris' || p.kind === 'knight' ||
-          p.kind === 'soldier') continue;
+          p.kind === 'soldier' || p.kind === 'ragdoll') continue;
       if (!p.body.isSleeping()) return false;
     }
     return true;
