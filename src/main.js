@@ -331,6 +331,10 @@ function renderLevelPicker() {
     if (open) b.addEventListener('click', () => { sfx.resume(); startLevel(i); });
     wrap.appendChild(b);
   });
+  // The main button resumes at your furthest castle, so it must not keep
+  // saying "begin" once you are three castles in.
+  const play = $('btnPlay');
+  if (play) play.textContent = prog.unlocked > 1 ? 'Continue the campaign' : 'Begin the siege';
 }
 
 function openPanel(html, wire) {

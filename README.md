@@ -27,8 +27,25 @@ Then open **http://localhost:5833**. No build step — three.js r170 and Rapier
 On a phone: drag to aim, the two arrows at the bottom circle the fortress,
 and DIVE is the second tap.
 
-Nine knights. A garrison of nine. Put every soldier down — ride them down in
-person, or drop the building on them. Standards are a bonus, not a requirement.
+Put every soldier down — ride them down in person, or drop the building on them.
+Standards are a bonus, not a requirement.
+
+## The castles
+
+| | | | |
+|---|---|---|---|
+| 1 | **Millbrook Tower** | a watchtower and a garden wall | 4 soldiers, 6 knights |
+| 2 | **Harrowgate** | a gatehouse, a thin curtain and a keep | 6 soldiers, 7 knights |
+| 3 | **Blackmere Keep** | the whole enceinte | 9 soldiers, 9 knights |
+
+Each has its own weather and countryside — high summer, harvest gold, dusk
+marsh. Not decoration: three castles of the same grey blocks on the same green
+field is the definition of drab.
+
+Orbit radius and launch speed both scale with the castle. Range goes with the
+SQUARE of speed, so a small level fired at the big castle's speeds cannot reach
+anything close in — the sentry standing in the open on level one had no firing
+solution at all between the 6 and 66 degree limits until speeds were scaled.
 
 ## Why it is built this way
 
@@ -47,7 +64,9 @@ worst place to stand. See [DESIGN.md](DESIGN.md).
 Everything runs headless (`renderer = null`). In the browser console:
 
 ```js
-ONAGER.sim()                      // 27 assertions, T1-T10
+ONAGER.sim()                      // assertions T1-T10, run against Blackmere
+ONAGER.setSimLevel(0)             // point the harness at another castle
+ONAGER.level(1)                   // jump straight into a castle
 ONAGER.bot(seed)                  // plays a whole game with a ballistic solver
 ONAGER.reachability()             // can every post be aimed at?
 ONAGER.audit(new ONAGER.Game())   // spawn overlaps + unsupported blocks

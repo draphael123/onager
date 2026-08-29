@@ -33,6 +33,32 @@ That only works if the faces are genuinely different problems. They are:
 West existing is the point. If every face works, orbiting is a camera control.
 A face that can lose you the run is what makes it a decision.
 
+## The campaign
+
+Three castles, each with its own weather and countryside:
+
+| | | | |
+|---|---|---|---|
+| 1 | **Millbrook Tower** | a watchtower and a garden wall | 4 soldiers, 6 knights, high summer |
+| 2 | **Harrowgate** | a gatehouse, a thin curtain and a keep | 6 soldiers, 7 knights, harvest gold |
+| 3 | **Blackmere Keep** | the whole enceinte | 9 soldiers, 9 knights, dusk marsh |
+
+Millbrook exists to teach. Each thing the game asks of you gets its own target:
+the sentry in the yard is a plain direct hit, the lookout on the wall needs a
+shot that tops it, and the roof watch and the sentry under the timber floor are
+the same problem — break the joists and the top of the tower lands on him.
+
+Two things scale with the castle, and both had to:
+
+**Orbit radius.** A small keep sat at radius 38 reads as a model on a table and
+every shot is a long blind lob.
+
+**Launch speed.** Range goes with the SQUARE of speed, so the big castle's
+speeds cannot reach anything close in on a small level. The sentry standing in
+the open on level one — the easiest target in the game — had no firing solution
+at all between the 6 and 66 degree limits, and the level was unwinnable for
+reasons that looked like level design and were actually units.
+
 ## The targets
 
 The fortress is garrisoned. **Nine soldiers**, posted by face, and putting all of
@@ -244,6 +270,18 @@ the face readable.
 **Hold the horizontal FOV, not the vertical.** On a narrow or portrait window a
 fixed vertical FOV crops the fortress to a featureless wall of masonry with no
 silhouette left to read.
+
+**A clearance must be absolute, not proportional.** Tower faces ended 2% short
+of the corner. That is 6.6cm on a big keep and 3.5cm on a small tower — under
+the masonry jitter — so simply making a tower narrower reintroduced spawn
+overlaps that had been fixed for weeks. Anything sized as a fraction of the
+structure will eventually be smaller than the noise.
+
+**A rig plus a generic mesh is a knight in a box.** `addPart` special-cased
+ground, banners and soldiers but not the knight, so the projectile got the
+default block mesh *on top of* its own model and flew to the castle sealed
+inside a 1.12m stone cube. Every branch that returns early is a list you have to
+keep in step with the kinds that exist.
 
 **Test the thing you think you're testing.** A measurement that reported zero
 contact events turned out to be reading a buffer that `Game._drain()` had
