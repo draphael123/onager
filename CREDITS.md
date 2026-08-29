@@ -36,9 +36,18 @@ Bundled in `assets/models/`:
 
 | File | Used for |
 |---|---|
-| `Knight.glb` | your knights — waiting, in flight, and on the machine |
-| `Barbarian.glb` | the garrison, tinted red so they read as targets |
+| `Knight.glb` | the Lance, and the garrison's Serjeant |
+| `Barbarian.glb` | the Maul, and the garrison's Levy (tinted red) |
+| `Rogue.glb` | the Sapper and the Brothers |
+| `Rogue_Hooded.glb` | the garrison's Rabble |
+| `Ranger.glb` | the garrison's Watch |
+| `Mage.glb` | the garrison's Warden |
 | `Anims_General.glb`, `Anims_Movement.glb` | 25 clips on the shared Rig_Medium |
+
+Every ammunition type and every garrison type is a different mesh rather than a
+different colour, because at thirty metres through a dust cloud a silhouette
+reads and a colour swatch does not. The same six meshes drive the garrison book
+(`src/roster.js`), where each one turns on the spot playing its own idle.
 
 The knight's cape is its own mesh, which is what lets every knight in the
 company wear his own colours while the armour underneath stays the same.

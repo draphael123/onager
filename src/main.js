@@ -3,7 +3,11 @@
 import * as RAPIER from '../vendor/rapier.es.js';
 import { Renderer } from './render.js';
 import { Sfx } from './audio.js';
-import { Game, S } from './game.js';
+import { Game, S, CAM_MODES, CAM_NAMES } from './game.js';
+import { TYPES, TYPE_ORDER } from './knights.js';
+import { Tutorial } from './tutorial.js';
+import { RosterView, rosterHtml } from './roster.js';
+import { FOES, FOE_ORDER, FOE_DEBUT } from './foes.js';
 import { LEVELS, loadProgress, saveProgress } from './levels.js';
 import { runSim, sweep, sweepAll, audit, bot, reachability, setSimLevel, FACE_ANGLE, BEST } from './sim.js';
 import { SET, loadSettings, saveSettings, applySettings, activeQualityName, activeQuality } from './settings.js';
@@ -67,12 +71,23 @@ const keys = new Set();
 let kpips = [], bpips = [], spips = [], csegs = [];
 
 function buildHud() {
+  // The rack is built from whatever this castle actually issued, so a level
+  // that has no Sappers does not show you an empty Sapper slot to wonder about.
   const kw = $('knights'); kw.innerHTML = '';
   kpips = [];
-  for (let i = 0; i < game.knightsTotal; i++) {
-    const d = document.createElement('div'); d.className = 'kpip';
+  const issued = TYPE_ORDER.filter(id => (game.loadCounts[id] || 0) > 0);
+  issued.forEach((id, i) => {
+    const T = TYPES[id];
+    const d = document.createElement('div');
+    d.className = 'ktile'; d.dataset.type = id;
+    d.title = T.name + ' — ' + T.blurb;
+    d.innerHTML =
+      `<div class="kglyph" style="background:#${T.colour.toString(16).padStart(6, '0')}"></div>` +
+      `<div class="kname">${T.name}</div><div class="kct"></div>` +
+      `<div class="kkey">${i + 1}</div>`;
+    d.addEventListener('click', () => { if (game.selectType(id)) sfx.tick && sfx.tick(); });
     kw.appendChild(d); kpips.push(d);
-  }
+  });
   const sw = $('soldiers'); sw.innerHTML = '';
   spips = [];
   for (let i = 0; i < game.soldiersTotal; i++) {
@@ -93,6 +108,28 @@ function buildHud() {
   }
 }
 
+// The view is a persistent choice, not a per-level one: someone who wants to
+// watch from the wall wants that on every castle.
+function setCam(mode) {
+  game.camMode = mode;
+  SET.camera = mode;
+  saveSettings();
+  $('viewName').textContent = CAM_NAMES[mode] || mode;
+  $('viewChip').classList.remove('flash');
+  void $('viewChip').offsetWidth;
+  $('viewChip').classList.add('flash');
+  hint(CAM_BLURB[mode] || '', 2.5);
+}
+
+const ROMAN = ['I', 'II', 'III', 'IV', 'V', 'VI', 'VII', 'VIII'];
+
+const CAM_BLURB = {
+  siege: 'Siege view — over the shoulder.',
+  low: 'Low view — down at the arm, riding in with him.',
+  wide: 'Wide view — the whole arc at once.',
+  wall: 'Wall view — watch it arrive from the castle.',
+};
+
 let hintT = 0;
 function hint(t, secs = 4) { $('hint').textContent = t; hintT = secs; }
 
@@ -102,8 +139,14 @@ function syncPower() {
 }
 
 function syncHud(dt) {
-  for (let i = 0; i < kpips.length; i++)
-    kpips[i].classList.toggle('spent', i >= game.knights);
+  for (const t of kpips) {
+    const n = game.loadCounts[t.dataset.type] || 0;
+    t.querySelector('.kct').textContent = '×' + n;
+    t.classList.toggle('out', n === 0);
+    t.classList.toggle('on', n > 0 && game.selected === t.dataset.type);
+  }
+  const sel = TYPES[game.selected];
+  $('loadsub').textContent = sel ? sel.blurb + ' · ' + sel.diveHint : '';
   for (let i = 0; i < spips.length; i++)
     spips[i].classList.toggle('down', i < game.soldiersDown);
   for (let i = 0; i < bpips.length; i++)
@@ -240,9 +283,16 @@ function wireInput() {
     game.dragging = false;
     anchor = null;
     hideBand();
-    game.fire();
+    if (game.fire() && coach) coach.noteFire();
     buzz(26);
-    if (game.knights === game.knightsTotal - 1) hint('SPACE or DIVE mid-flight for a lance dive.', 5);
+    const T = game.shotType;
+    if (T) {
+      $('tcDive').textContent = T.dive === 'burst' ? 'BURST'
+        : T.dive === 'split' ? 'SPLIT' : T.dive === 'pound' ? 'POUND' : 'DIVE';
+      if (game.knights === game.knightsTotal - 1 || T.dive !== 'dive') {
+        hint('SPACE or the button, mid-flight — ' + T.diveHint, 5);
+      }
+    }
   };
 
   cv.addEventListener('pointerdown', down);
@@ -254,16 +304,26 @@ function wireInput() {
     sfx.resume();
     const k = e.key.toLowerCase();
     keys.add(k);
-    if (k === ' ') { e.preventDefault(); if (playing) game.dive(); }
+    if (k === ' ') { e.preventDefault(); if (playing && game.dive() && coach) coach.noteDive(); }
     if (playing && game.state === S.AIM) {
       if (k === 'w' || k === 'arrowup') { e.preventDefault(); bumpPower(0.04); }
       if (k === 's' || k === 'arrowdown') { e.preventDefault(); bumpPower(-0.04); }
     }
+    // 1-5 load a different man. Cycling with one key was worse: you are
+    // choosing between five things at once, not stepping through a list.
+    if (playing && k >= '1' && k <= '9') {
+      const t = kpips[+k - 1];
+      if (t) { e.preventDefault(); game.selectType(t.dataset.type); }
+    }
+    if (k === 'c' && playing) { e.preventDefault(); setCam(game.cycleCam(1)); }
     if (k === 'r' && playing) restart();
     if (k === 'escape') togglePanel();
   });
   addEventListener('keyup', (e) => keys.delete(e.key.toLowerCase()));
   addEventListener('blur', () => { keys.clear(); orbitHeld = 0; });
+
+  $('coachNext').addEventListener('click', () => stopCoach(true));
+  $('viewChip').addEventListener('click', () => setCam(game.cycleCam(1)));
 
   // The result card builds its own buttons per outcome; see showCard().
 
@@ -309,7 +369,8 @@ function wireInput() {
   holdPow('powDown', -0.04);
 
   $('tcDive').addEventListener('pointerdown', (e) => {
-    e.preventDefault(); sfx.resume(); if (playing && game.dive()) buzz(18);
+    e.preventDefault(); sfx.resume();
+    if (playing && game.dive()) { buzz(18); if (coach) coach.noteDive(); }
   });
 }
 
@@ -335,7 +396,36 @@ function startLevel(i) {
   game.setLevel(i);
   buildHud();
   const L = LEVELS[i];
+  $('castleNum').textContent = ROMAN[i] || String(i + 1);
+  $('castleName').textContent = L.name;
+  setCam(game.camMode);
   hint(`${L.name} — ${L.blurb}`, 6);
+  startCoach(i);
+}
+
+// ---- the guided first siege ------------------------------------------------
+//
+// Runs on the first castle only, once, unless the player asks for it again.
+// It never gates anything: every step can be ignored and the shot still fires.
+
+let coach = null;
+function startCoach(levelIdx) {
+  stopCoach();
+  if (levelIdx !== 0 || !SET.tutorial) return;
+  const touch = matchMedia('(pointer: coarse)').matches;
+  coach = new Tutorial(game, {
+    root: $('coach'), title: $('coachTitle'), body: $('coachBody'),
+    dots: $('coachDots'), next: $('coachNext'),
+  }, touch);
+  document.body.classList.add('coaching');
+}
+
+function stopCoach(remember) {
+  if (coach) coach.finish();
+  coach = null;
+  document.body.classList.remove('coaching');
+  $('coach').classList.remove('on');
+  if (remember) { SET.tutorial = false; saveSettings(); }
 }
 
 function toTitle() {
@@ -355,7 +445,8 @@ function toTitle() {
 function wireMenus() {
   $('btnPlay').addEventListener('click', beginGame);
   renderLevelPicker();
-  $('btnHow').addEventListener('click', () => openPanel(howToHtml()));
+  $('btnHow').addEventListener('click', () => openPanel(howToHtml(), wireHow));
+  $('btnFoes').addEventListener('click', openRoster);
   $('btnSet').addEventListener('click', () => openPanel(settingsHtml(), wireSettings));
   $('gear').addEventListener('click', () => openPanel(settingsHtml(), wireSettings));
   $('panel').addEventListener('click', (e) => { if (e.target === $('panel')) closePanel(); });
@@ -395,7 +486,47 @@ function openPanel(html, wire) {
   const close = $('panelClose');
   if (close) close.addEventListener('click', closePanel);
 }
-function closePanel() { $('panel').classList.remove('on'); }
+function wireHow() {
+  const b = $('howFoes');
+  if (b) b.addEventListener('click', openRoster);
+}
+
+function closePanel() {
+  $('panel').classList.remove('on');
+  // The book runs its own GL context and its own RAF. Leaving it running
+  // behind a closed panel is a second render loop nobody is looking at.
+  if (roster) { roster.dispose(); roster = null; }
+}
+
+// ---- the garrison book -----------------------------------------------------
+
+let roster = null;
+function openRoster() {
+  openPanel(rosterHtml(prog.unlocked), () => {
+    roster = new RosterView($('foeCanvas'));
+    const rows = [...document.querySelectorAll('.foeRow')];
+    const pick = (id) => {
+      rows.forEach(r => r.classList.toggle('on', r.dataset.foe === id));
+      const F = FOES[id];
+      roster.show(id);
+      $('fcName').textContent = F.name;
+      $('fcRole').textContent = F.role;
+      const chips = [`${F.hp} hp`];
+      if (F.armour < 1) chips.push(`${Math.round((1 - F.armour) * 100)}% off a strike`);
+      if (F.pack) chips.push(`${F.pack} to a post`);
+      if (F.picket) chips.push(`${F.picket}, spread wide`);
+      if (F.shore) chips.push(`shores ${F.shore.radius}m`);
+      chips.push(`first seen: castle ${FOE_DEBUT[id] || 1}`);
+      const beat = F.counter && TYPES[F.counter];
+      $('fcStats').innerHTML = chips.map(c => `<span>${c}</span>`).join('')
+        + (beat ? `<span class="beat">answer: the ${beat.name}</span>` : '');
+    };
+    for (const r of rows) r.addEventListener('click', () => pick(r.dataset.foe));
+    pick(FOE_ORDER[0]);
+    roster.start();
+    addEventListener('resize', () => roster && roster.resize());
+  });
+}
 function togglePanel() {
   if ($('panel').classList.contains('on')) closePanel();
   else if (playing) openPanel(settingsHtml(), wireSettings);
@@ -413,8 +544,20 @@ function howToHtml() {
       <b>Draw the arm back.</b> The drag's angle sets elevation, its length sets
       power. Nothing else. The dotted arc is exactly where the knight will fly.
     </div></div>
+    <div class="howRow"><kbd>1 &ndash; 4</kbd><div>
+      <b>Choose the man.</b> Four kinds ride the arm and they are not
+      interchangeable. A <b>Lance</b> punches through. A <b>Maul</b> shatters
+      stone and stops dead. A <b>Sapper</b> bursts and is useless against a
+      wall. The <b>Brothers</b> are three men in one shot &mdash; but only if
+      you split them.
+    </div></div>
+    <div class="howRow"><kbd>C</kbd><div>
+      <b>Change the view.</b> Four of them: over the shoulder, down at the arm,
+      high and wide, or parked at the castle watching the shot arrive.
+    </div></div>
     <div class="howRow"><kbd>space</kbd><div>
-      <b>Lance dive.</b> Once per shot, in flight. Trades the rest of your arc
+      <b>The second tap.</b> Once per shot, in flight, and it does something
+      different for every kind of man. For a Lance it trades the rest of your arc
       for a steep fast drop &mdash; it turns a shot that would sail over into one
       that lands on a roof.
     </div></div>
@@ -425,7 +568,9 @@ function howToHtml() {
       building on them &mdash; a soldier under a collapsing arch counts, and
       counts for more. Standards are a bonus, not a requirement.
     </div></div>
-    <div class="sheetFoot"><button class="tbtn" id="panelClose">Close</button></div>`;
+    <div class="sheetFoot">
+      <button class="tbtn ghost" id="howFoes">The garrison</button>
+      <button class="tbtn" id="panelClose">Close</button></div>`;
 }
 
 function settingsHtml() {
@@ -514,6 +659,10 @@ function tickGame(dt) {
   game.step(dt);
   game.render(dt);
   syncHud(dt);
+  if (coach) {
+    coach.update(dt);
+    if (!coach.active) stopCoach(true);
+  }
   rd.render();
   if (game.state === S.OVER && !$('card').classList.contains('on') && !cardPending) {
     cardPending = true;
@@ -562,4 +711,9 @@ window.ONAGER = {
   sim: runSim, sweep, sweepAll, audit, bot, reachability, setSimLevel, LEVELS, FACE_ANGLE, BEST,
   MODELS, listClips, spawnCharacter,
   pause(on = true) { paused = on; return paused; },
+  // Handy from the console, and used by the screenshot pass: switch view
+  // without hunting for the chip.
+  view(mode) { setCam(mode); return game.camMode; },
+  coach() { return coach; },
+  roster() { openRoster(); },
 };

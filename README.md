@@ -21,7 +21,9 @@ Then open **http://localhost:5833**. No build step — three.js r170 and Rapier
 | `Shift` + `A`/`D` | fine trim — line up on one pier, not one face |
 | drag | aim. **Sideways** swings the machine ±24°, **down** raises the arm |
 | wheel / `W` `S` | range (persists between shots) |
-| `SPACE` | lance dive, once per shot, mid-flight |
+| `1` &ndash; `4` | choose the man on the arm |
+| `SPACE` | the second tap, once per shot, mid-flight |
+| `C` | change the view |
 | `R` | restart |
 | `Esc` | settings |
 
@@ -31,6 +33,50 @@ On a phone: drag to aim, the two arrows at the bottom circle the fortress, the
 Put every soldier down — ride them down in person, or drop the building on them.
 Standards are a bonus, not a requirement.
 
+## The four men
+
+Each castle issues a mixed loadout, and the mix is half the puzzle. Every number
+below is read straight off `src/knights.js` by the physics; nothing about a type
+is hardcoded anywhere else.
+
+| | what it is for | what it is bad at | second tap |
+|---|---|---|---|
+| **Lance** | the all-rounder; keeps 72% of its speed through a block it breaks | thick stone | a steep drop out of the arc |
+| **Maul** | masonry — **3x the Lance** over the same shot grid | range, and it stops where it lands | ground pound |
+| **Sapper** | men standing together — the best killer in the game | walls; the blast barely marks them | burst in the air |
+| **Brothers** | one becomes three, spread across a wall | anything, individually | split |
+
+Measured, not asserted. Over a twenty-aim grid on Blackmere the Maul breaks 22
+blocks to the Lance's 9, the Sapper kills more men than anything else while
+breaking a third of what the Maul does, and the Brothers go from 8 kills unsplit
+to 19 split — the gap that makes the second tap the type rather than a bonus.
+
+A fifth type, the **Hook**, was built and cut. It hauled a block out of a wall
+instead of breaking it. Over a two-shot grid on three faces, opening with a Hook
+was worse than opening with a plain Lance every single time. It was tuned twice.
+A type that is never the right answer is a slot the player has to learn to
+ignore.
+
+## The garrison
+
+Five kinds of defender, each designed against one of your four verbs — see
+`src/foes.js`, and the animated roster in-game under **The garrison**.
+
+| | |
+|---|---|
+| **Levy** | the baseline. If a shot arrives, he goes down. |
+| **Rabble** | three to a post, huddled. A Lance takes one; a burst takes all three. |
+| **Watch** | three strung out along a wall walk. No burst reaches two of them. |
+| **Serjeant** | 70% off a direct strike, and nothing off being crushed. You do not shoot him off the wall — you bring the wall down. |
+| **Warden** | masonry within eight metres takes 45% less damage while he lives. He does not defend himself; he changes the ORDER you attack in. |
+
+## The views
+
+`C` cycles four. **Siege** is over the shoulder. **Low** rides down at the arm.
+**Wide** looks from above with the whole arc in frame. **Wall** parks at the
+castle and watches the shot arrive at you — it cuts rather than pans, because
+swinging the camera across the field took two seconds and you missed the impact.
+
 ## The castles
 
 | | | | |
@@ -38,9 +84,11 @@ Standards are a bonus, not a requirement.
 | 1 | **Millbrook Tower** | a watchtower and a garden wall | 4 soldiers, 6 knights |
 | 2 | **Harrowgate** | a gatehouse, a thin curtain and a keep | 6 soldiers, 7 knights |
 | 3 | **Blackmere Keep** | the whole enceinte | 9 soldiers, 9 knights |
+| 4 | **Stonefall Priory** | an arcade under a stone roof | 12 soldiers, 10 knights |
+| 5 | **Vantwick on the Sound** | four faces, four answers | 11 soldiers, 10 knights |
 
 Each has its own weather and countryside — high summer, harvest gold, dusk
-marsh. Not decoration: three castles of the same grey blocks on the same green
+marsh, hard winter, a storm off the sound. Not decoration: three castles of the same grey blocks on the same green
 field is the definition of drab.
 
 Orbit radius and launch speed both scale with the castle. Range goes with the

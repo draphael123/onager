@@ -35,22 +35,64 @@
   #hud{position:fixed;inset:0;pointer-events:none;z-index:20;
     padding:max(18px,env(safe-area-inset-top)) 20px 20px;
     display:flex;flex-direction:column;justify-content:space-between}
+  /* A scrim behind the header and the footer. Without it the HUD is legible on
+     the dusk themes and invisible on the snow one — pale grey letters on a
+     white field. It has to sit BEHIND the content, so it is a pseudo-element on
+     #hud rather than a wrapper, and it must not eat pointer events. */
+  #hud::before,#hud::after{content:'';position:absolute;left:0;right:0;
+    pointer-events:none;z-index:-1}
+  #hud::before{top:0;height:190px;
+    background:linear-gradient(180deg,rgba(12,10,20,.62),rgba(12,10,20,.34) 42%,transparent)}
+  #hud::after{bottom:0;height:180px;
+    background:linear-gradient(0deg,rgba(12,10,20,.6),rgba(12,10,20,.28) 46%,transparent)}
+  #face,#facesub,.lbl,.num{text-shadow:0 1px 3px rgba(0,0,0,.55)}
   .hrow{display:flex;justify-content:space-between;align-items:flex-start;gap:20px}
   .lbl{font-size:9px;letter-spacing:.26em;text-transform:uppercase;color:#7d7590;margin-bottom:6px}
 
-  #knights{display:flex;gap:7px;align-items:center}
-  .kpip{width:11px;height:22px;background:#e0b25c;
-    clip-path:polygon(50% 0,100% 24%,100% 76%,50% 100%,0 76%,0 24%);
-    transition:opacity .25s,transform .25s}
-  .kpip.spent{opacity:.16;transform:scale(.7)}
+  /* The rack. Not a counter any more: this is WHAT you have left and WHICH one
+     is on the arm, because with five kinds of man the choice is the move. */
+  #knights{display:flex;gap:5px;align-items:stretch;pointer-events:auto}
+  .ktile{width:52px;padding:5px 0 4px;border-radius:5px;cursor:pointer;
+    background:rgba(20,17,28,.5);border:1px solid rgba(233,226,210,.14);
+    text-align:center;transition:border-color .16s,background .16s,opacity .2s,transform .16s}
+  .ktile:hover{background:rgba(34,29,46,.72)}
+  .ktile.on{border-color:#e0b25c;background:rgba(60,45,22,.6);
+    box-shadow:0 0 0 1px rgba(224,178,92,.4),0 3px 12px rgba(224,178,92,.16)}
+  .ktile.out{opacity:.22;cursor:default;transform:scale(.9)}
+  .kglyph{width:16px;height:16px;margin:0 auto 3px;
+    clip-path:polygon(50% 0,100% 24%,100% 76%,50% 100%,0 76%,0 24%)}
+  .kname{font-size:8px;letter-spacing:.14em;text-transform:uppercase;color:#b8b0c6;
+    line-height:1}
+  .kct{font-size:12px;color:#e9e2d2;margin-top:2px;line-height:1;font-variant-numeric:tabular-nums}
+  .ktile.out .kct{color:#6f6784}
+  .kkey{font-size:7px;color:#6f6784;letter-spacing:.1em;margin-top:2px;line-height:1}
+  #loadsub{font-size:10px;color:#a79ebc;margin-top:7px;max-width:266px;
+    letter-spacing:.02em;line-height:1.5;
+    background:rgba(16,13,24,.5);border-left:2px solid rgba(224,178,92,.5);
+    border-radius:0 4px 4px 0;padding:6px 9px}
+  #loadsub:empty{display:none}
+
+  /* Which castle you are on. Five of them now, and the face name alone does
+     not say whether you are at Millbrook or Vantwick. */
+  .hleft .lbl{display:flex;align-items:baseline;gap:8px}
+  #castleNum{color:#e0b25c;font-size:11px;letter-spacing:.1em}
+  #castleName{color:#8b83a0}
+  @media (max-width:720px){
+    .ktile{width:42px}
+    .kkey{display:none}
+    #loadsub{display:none}
+  }
 
   /* Soldiers are the objective, so they get the loud pip. */
-  #soldiers{display:flex;gap:6px;align-items:center;justify-content:flex-end}
+  /* Twelve pips do not fit one row on a phone, and a row that silently
+     overflows reads as a smaller garrison than you actually face. */
+  #soldiers{display:flex;flex-wrap:wrap;gap:5px 5px;align-items:center;
+    justify-content:flex-end;max-width:min(46vw,260px)}
   .spip{width:13px;height:21px;background:#c4402f;
     clip-path:polygon(50% 0,74% 13%,74% 34%,100% 52%,100% 100%,0 100%,0 52%,26% 34%,26% 13%);
     transition:opacity .3s,transform .35s,background .3s}
   .spip.down{opacity:.2;background:#4a4458;transform:translateY(6px) rotate(76deg)}
-  #banners{display:flex;gap:6px;align-items:center;justify-content:flex-end;margin-top:7px}
+  #banners{display:flex;gap:5px;align-items:center;justify-content:flex-end;margin-top:8px}
   .bpip{width:9px;height:12px;background:#8a6a4e;
     clip-path:polygon(0 0,100% 0,100% 100%,50% 74%,0 100%);
     transition:opacity .3s,transform .3s,background .3s}
@@ -221,14 +263,15 @@
   body.lefty #tcL{left:auto;right:calc(90px + env(safe-area-inset-right))}
   body.lefty #tcR{left:auto;right:calc(16px + env(safe-area-inset-right))}
   body.lefty #tcDive{right:auto;left:calc(16px + env(safe-area-inset-left))}
-  #gear{position:fixed;bottom:calc(24px + env(safe-area-inset-bottom));
-    left:50%;transform:translateX(-50%);z-index:24;width:34px;height:34px;
-    border-radius:50%;background:rgba(20,18,28,.42);border:1px solid rgba(233,226,210,.16);
-    color:#cbbfa6;cursor:pointer;font-size:15px;display:none;align-items:center;
-    justify-content:center;pointer-events:auto;transition:all .15s}
-  body.playing #gear{display:flex}
-  @media (min-width:641px){ #gear{bottom:auto;left:auto;transform:none;
-    top:calc(14px + env(safe-area-inset-top));right:calc(14px + env(safe-area-inset-right))} }
+  /* The settings cog and the view chip live IN the header column now. As
+     free-floating fixed elements they landed on top of the word GARRISON at
+     every width above 640px. */
+  .hctl{display:flex;gap:6px;align-items:center;justify-content:flex-end;
+    margin-bottom:9px;pointer-events:auto}
+  #gear{width:28px;height:28px;flex:none;
+    border-radius:50%;background:rgba(20,18,28,.55);border:1px solid rgba(233,226,210,.16);
+    color:#cbbfa6;cursor:pointer;font-size:13px;display:flex;align-items:center;
+    justify-content:center;transition:all .15s;padding:0}
   #gear:hover{background:rgba(224,178,92,.85);color:#1b1a24;border-color:#e0b25c}
 
   body.pregame #hud,body.pregame #compass,body.pregame #keys,body.pregame #touch{
@@ -253,6 +296,89 @@
     #bottom{padding-bottom:96px}
     #compass{bottom:110px}
   }
+
+  /* ---------- the garrison book ---------- */
+  /* The portrait is a live model, not a picture. Size is the only tell for
+     what a Serjeant will do to a Lance, and a still image does not carry it. */
+  .lead{font-size:12px;color:#8b83a0;margin:-4px 0 14px;letter-spacing:.02em}
+  .rosterWrap{display:flex;gap:18px;align-items:stretch}
+  .foeList{flex:1;display:flex;flex-direction:column;gap:5px;min-width:0}
+  .foeRow{display:grid;grid-template-columns:12px 1fr;grid-template-rows:auto auto;
+    gap:2px 10px;align-items:center;text-align:left;cursor:pointer;
+    background:rgba(255,255,255,.02);border:1px solid rgba(233,226,210,.1);
+    border-radius:6px;padding:9px 11px;font:inherit;color:inherit;
+    transition:border-color .16s,background .16s}
+  .foeRow:hover{background:rgba(255,255,255,.05)}
+  .foeRow.on{border-color:#e0b25c;background:rgba(60,45,22,.42)}
+  .foeRow i{grid-row:1/3;width:12px;height:12px;border-radius:50%;display:block}
+  .foeRow .fname{font-size:12px;letter-spacing:.13em;text-transform:uppercase;color:#e9e2d2}
+  .foeRow .fsub{font-size:11px;color:#8b83a0;line-height:1.4}
+  .foeStage{flex:none;width:262px;display:flex;flex-direction:column;
+    background:linear-gradient(180deg,rgba(46,52,70,.55),rgba(18,15,26,.72));
+    border:1px solid rgba(233,226,210,.1);border-radius:7px;overflow:hidden}
+  #foeCanvas{width:100%;height:230px;display:block}
+  .foeCard{padding:11px 13px 13px;border-top:1px solid rgba(233,226,210,.09)}
+  .fcName{font-size:12px;letter-spacing:.18em;text-transform:uppercase;color:#e0b25c}
+  .fcRole{font-size:11.5px;color:#cbbfa6;line-height:1.55;margin-top:7px}
+  .fcStats{display:flex;flex-wrap:wrap;gap:5px;margin-top:10px}
+  .fcStats span{font-size:9px;letter-spacing:.11em;text-transform:uppercase;
+    color:#b8b0c6;border:1px solid rgba(233,226,210,.16);border-radius:3px;padding:3px 6px}
+  .fcStats span.beat{color:#f0d69a;border-color:rgba(224,178,92,.42);
+    background:rgba(224,178,92,.09)}
+  @media (max-width:660px){
+    .rosterWrap{flex-direction:column-reverse}
+    .foeStage{width:100%}
+    #foeCanvas{height:190px}
+  }
+
+  /* ---------- view chip ---------- */
+  #viewChip{display:flex;
+    align-items:center;gap:6px;padding:5px 9px;border-radius:16px;cursor:pointer;
+    background:rgba(20,17,28,.55);border:1px solid rgba(233,226,210,.16);
+    color:#c9c1d4;font:inherit;font-size:9px;letter-spacing:.15em;
+    text-transform:uppercase;transition:border-color .16s,color .16s}
+  #viewChip:hover{border-color:#e0b25c;color:#e9e2d2}
+  #viewChip .veye{color:#e0b25c;font-size:9px}
+  #viewChip b{font-weight:400;font-size:8px;color:#6f6784;border:1px solid rgba(233,226,210,.18);
+    border-radius:3px;padding:1px 4px;letter-spacing:.06em}
+  #viewChip.flash{animation:viewflash .45s ease-out}
+  @keyframes viewflash{0%{border-color:#e0b25c;background:rgba(60,45,22,.75)}
+    100%{border-color:rgba(233,226,210,.16);background:rgba(20,17,28,.66)}}
+  @media (max-width:720px){ #viewChip b{display:none} }
+
+  /* ---------- guided first siege ---------- */
+  /* One verb at a time, and it waits for you to do it. Sits above the power
+     row so it never covers the thing the current step is telling you to use. */
+  #coach{position:fixed;left:50%;transform:translateX(-50%) translateY(8px);
+    bottom:108px;z-index:24;width:min(430px,calc(100vw - 36px));
+    background:rgba(16,13,24,.9);border:1px solid rgba(224,178,92,.34);
+    border-radius:9px;padding:13px 15px 11px;pointer-events:auto;
+    box-shadow:0 10px 34px rgba(0,0,0,.5);opacity:0;visibility:hidden;
+    transition:opacity .22s,transform .22s,visibility .22s}
+  #coach.on{opacity:1;visibility:visible;transform:translateX(-50%) translateY(0)}
+  #coach.idle{opacity:.4}
+  #coach.pop{animation:coachpop .3s ease-out}
+  @keyframes coachpop{0%{transform:translateX(-50%) translateY(7px);opacity:.3}
+    100%{transform:translateX(-50%) translateY(0);opacity:1}}
+  #coachTitle{font-size:10px;letter-spacing:.24em;text-transform:uppercase;
+    color:#e0b25c;margin-bottom:7px}
+  #coachBody{font-size:13px;line-height:1.5;color:#ded7ca}
+  #coachBody b{color:#fff;background:rgba(224,178,92,.17);border-radius:3px;
+    padding:1px 5px;font-weight:600}
+  #coachFoot{display:flex;justify-content:space-between;align-items:center;
+    margin-top:11px}
+  #coachDots{display:flex;gap:5px}
+  #coachDots i{width:5px;height:5px;border-radius:50%;background:rgba(233,226,210,.2);
+    transition:background .2s,transform .2s}
+  #coachDots i.was{background:rgba(224,178,92,.45)}
+  #coachDots i.is{background:#e0b25c;transform:scale(1.5)}
+  #coachNext{background:none;border:1px solid rgba(233,226,210,.24);color:#b8b0c6;
+    font:inherit;font-size:10px;letter-spacing:.16em;text-transform:uppercase;
+    padding:5px 12px;border-radius:4px;cursor:pointer}
+  #coachNext:hover{border-color:#e0b25c;color:#e9e2d2}
+  body.coaching #keys{opacity:0}
+  @media (max-width:720px){ #coach{bottom:126px} }
+  @media (prefers-reduced-motion:reduce){ #coach.pop{animation:none} }
   @media (prefers-reduced-motion:reduce){ .spark{animation:none;opacity:.7} }
 </style>
 </head>
@@ -261,16 +387,21 @@
 
 <div id="hud">
   <div class="hrow">
-    <div>
-      <div class="lbl">Knights</div>
+    <div class="hleft">
+      <div class="lbl"><span id="castleNum"></span><span id="castleName"></span></div>
       <div id="knights"></div>
       <div class="num" id="knightsNum"></div>
+      <div id="loadsub"></div>
     </div>
     <div id="facewrap">
       <div id="face">&mdash;</div>
       <div id="facesub"></div>
     </div>
-    <div>
+    <div class="hright">
+      <div class="hctl">
+        <button id="viewChip" title="Change view (C)"><span class="veye">&#9673;</span><span id="viewName">Siege</span><b>C</b></button>
+        <button id="gear" title="Settings">&#9881;</button>
+      </div>
       <div class="lbl" style="text-align:right">Garrison</div>
       <div id="soldiers"></div>
       <div class="num" id="soldiersNum"></div>
@@ -286,6 +417,15 @@
       <span class="pval" id="powVal">80%</span>
     </div>
     <div id="hint"></div>
+  </div>
+</div>
+
+<div id="coach">
+  <div id="coachTitle"></div>
+  <div id="coachBody"></div>
+  <div id="coachFoot">
+    <div id="coachDots"></div>
+    <button id="coachNext">Skip</button>
   </div>
 </div>
 
@@ -320,7 +460,6 @@
   <div class="tc" id="tcDive">DIVE</div>
 </div>
 
-<button id="gear" title="Settings">&#9881;</button>
 
 <div id="title">
   <div id="titleTop">
@@ -333,6 +472,7 @@
     <div id="titleBtns">
       <button class="tbtn" id="btnPlay">Begin the siege</button>
       <button class="tbtn ghost" id="btnHow">How to play</button>
+      <button class="tbtn ghost" id="btnFoes">The garrison</button>
       <button class="tbtn ghost" id="btnSet">Settings</button>
     </div>
   </div>

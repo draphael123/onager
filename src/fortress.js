@@ -18,6 +18,7 @@
 //     centre of mass and the wall peels itself apart from the ends inward.
 
 import { rnd01 } from './rand.js';
+import { FOES } from './foes.js';
 
 export const F = 1.0;    // top of the plinth
 export const CH = 0.55;  // course half-height, so a course is 1.1 tall
@@ -208,8 +209,33 @@ export function makeBuilder(phys) {
   // Bearing matters more than it looks: shots travel RADIALLY toward the centre,
   // so a soldier only sits on a face's line if their bearing from the centre
   // matches that face.
-  function soldier(x, y, z, post) {
-    const p = phys.addSoldier(x, y, z, { post });
+  // A pack stands shoulder to shoulder: one blast takes all of them, and a
+  // Lance takes exactly one. The type carries its own posting rule, so a level
+  // says "rabble here" and gets the formation that makes them what they are.
+  function pack(x, y, z, post, id = 'rabble') {
+    const n = (FOES[id] && FOES[id].pack) || 3;
+    const out = [];
+    for (let i = 0; i < n; i++) {
+      const a = (i / n) * Math.PI * 2 + 0.7;
+      out.push(soldier(x + Math.cos(a) * 0.62, y, z + Math.sin(a) * 0.62, post, id));
+    }
+    return out;
+  }
+
+  // A picket is the opposite: strung out along a line, far enough apart that no
+  // single burst reaches two of them. `dx`/`dz` is the whole span, not a step.
+  function picket(x, y, z, dx, dz, post, id = 'watch') {
+    const n = (FOES[id] && FOES[id].picket) || 3;
+    const out = [];
+    for (let i = 0; i < n; i++) {
+      const u = n === 1 ? 0.5 : i / (n - 1);
+      out.push(soldier(x + dx * (u - 0.5), y, z + dz * (u - 0.5), post, id));
+    }
+    return out;
+  }
+
+  function soldier(x, y, z, post, id) {
+    const p = phys.addSoldier(x, y, z, { post, foe: id || 'levy' });
     soldiers.push(p);
     return p;
   }
@@ -222,7 +248,7 @@ export function makeBuilder(phys) {
   }
 
   return { phys, banners, soldiers, jitter, ground, plinth, wall, pier, run,
-    tower, banner, soldier, crate,
+    tower, banner, soldier, pack, picket, crate,
     done: (extra = {}) => ({ banners, soldiers, ...extra }) };
 }
 
@@ -370,7 +396,9 @@ export function buildLevel3(phys) {
     hpScale: 0.66,
     slits: [{ t: -3.0, c0: 3, c1: 3 }, { t: 3.0, c0: 4, c1: 4 }, { t: 0.0, c0: 5, c1: 5 }],
   });
-  b.soldier(12.6, F + 7 * CH * 2, 0.5, 'curtain walk');
+  // A Serjeant on the highest walk in the game. A direct hit does a third of
+  // its damage to him, so the answer is not a better shot — it is the wall.
+  b.soldier(12.6, F + 7 * CH * 2, 0.5, 'curtain walk', 'serjeant');
 
   // ---- WEST: the buttress ------------------------------------------------
   for (const dx of [-12.9, -11.5]) {
@@ -399,8 +427,11 @@ export function buildLevel3(phys) {
     phys.addBox(6.8 + dx, F + 0.22, -0.6 + dz, 0.55, 0.22, 0.55, { mat: 'stone', kind: 'step' });
   }
   b.banner(6.8, F + 0.6, -0.6, 'court', daisMid);
+  // The Warden stands in the middle of the yard, and his eight-metre ring
+  // covers the foot of the east curtain and the near side of the keep. Break
+  // either before he is down and you are doing half damage for nothing.
   // Clear of the step ring, which reaches x 8.85.
-  b.soldier(9.9, F, -0.1, 'courtyard');
+  b.soldier(9.9, F, -0.1, 'courtyard', 'warden');
   b.soldier(10.6, F, -3.4, 'wall foot');
 
   for (const [cx, cz] of [[-6.5, -4], [-7.2, 2], [8.8, 5.5], [-3, -6.5], [9.0, -7.8]]) b.crate(cx, cz);
@@ -412,4 +443,172 @@ export const FACES3 = [
   { name: 'East Curtain',  sub: 'one block thick, and slitted', a: Math.PI / 2 },
   { name: 'South Keep',    sub: 'nearest face — timber floors inside', a: Math.PI },
   { name: 'West Buttress', sub: 'two walls thick, and nobody posted behind it', a: -Math.PI / 2 },
+];
+
+// ---------------------------------------------------------------------------
+// 4 — STONEFALL PRIORY
+//
+// The first castle built around a piece of STRUCTURE rather than a wall
+// thickness: a long arcade of thin piers carrying a heavy stone roof. Take one
+// pier and the bay above it comes down on whatever is standing in it. Every
+// other castle rewards hitting a target; this one rewards hitting a support.
+//
+// It is also the first with a mixed garrison, so the choice of man starts to
+// matter as much as the choice of face:
+//   north  the arcade      — Rabble huddled in the bays, and the roof over them
+//   east   the bell tower  — a Watch picket strung along its walk
+//   south  the cloister    — a Serjeant behind a low wall, unhittable directly
+//   west   the undercroft  — the Warden, shoring the arcade from behind it
+// ---------------------------------------------------------------------------
+export function buildLevel4(phys) {
+  const b = makeBuilder(phys);
+  b.ground();
+  b.plinth(14.0, 15.5);
+
+  // ---- NORTH: the arcade --------------------------------------------------
+  // Four thin piers, three bays, one continuous stone roof. The lintels span
+  // pier centre to pier centre so each end genuinely lands on stone rather
+  // than on air, which is what makes losing one pier drop the whole bay.
+  const BAY = 4.6, PIER_H = 5;
+  const pierXs = [-6.9, -2.3, 2.3, 6.9];
+  let arcTop = 0;
+  for (const px of pierXs) arcTop = b.pier(px, -10.6, PIER_H, 0.62, 1.05, 'stone');
+  for (let i = 0; i < pierXs.length - 1; i++) {
+    const mid = (pierXs[i] + pierXs[i + 1]) / 2;
+    // Half-width is exactly half a bay, so consecutive lintels ABUT over a
+    // pier rather than passing through each other — BAY/2 + a bearing put them
+    // 0.87m into their neighbours and the arcade detonated on frame one. The
+    // 0.05 of clearance above the pier is the same absolute figure tower() uses
+    // and for the same reason: masonry jitter eats a proportional one.
+    phys.addBox(mid, arcTop + 0.50, -10.6, BAY / 2 - 0.04, 0.45, 1.0,
+      { mat: 'stone', kind: 'lintel' });
+  }
+  // The roof: one course of heavy slabs across the whole arcade. This is the
+  // mass that makes losing a pier catastrophic rather than merely untidy.
+  // The roof spans pier CENTRE to pier CENTRE and no further. Six wider slabs
+  // overhung the outer piers by more than a metre, so the end ones were
+  // cantilevered past their own centre of mass and tipped off on frame one —
+  // the same fault that once peeled the running bond off a curtain wall.
+  const SLAB_HW = 1.37, SPAN = pierXs[pierXs.length - 1] - pierXs[0];
+  const nSlab = Math.round(SPAN / (SLAB_HW * 2));
+  for (let i = 0; i < nSlab; i++) {
+    phys.addBox(pierXs[0] + SLAB_HW + i * SLAB_HW * 2, arcTop + 1.38, -10.6,
+      SLAB_HW - 0.03, 0.38, 1.5, { mat: 'stone', kind: 'slab' });
+  }
+  // A pack in two of the bays: a Lance takes one of three, a burst takes a
+  // bay, and the pier takes the bay AND the roof over it.
+  b.pack(0, F, -10.6, 'middle bay');
+  b.pack(-4.6, F, -10.6, 'west bay');
+
+  // ---- EAST: the bell tower ----------------------------------------------
+  const bt = b.tower({ x: 9.4, z: 0.4, r: 3.4, t: 0.58, courses: 7, joistAt: 5,
+    doorFace: 1, spanBlocks: 3 });
+  b.banner(9.4, bt.roofTop, 0.4, 'bell', bt.roofMid);
+  // A picket across the whole width of the walk — no single burst reaches two
+  // of them, which is exactly what the Brothers are for. Offset in X so the
+  // middle man does not stand in the standard.
+  b.picket(8.2, bt.roofTop, 0.4, 0, 4.4, 'bell walk');
+
+  // ---- SOUTH: the cloister wall ------------------------------------------
+  // Low and thick, with a Serjeant standing right behind it. He shrugs off a
+  // direct strike, so the answer is to put the wall on top of him.
+  b.wall({ x: 0, z: 11.6, axis: 'x', len: 17, thick: 1.15, courses: 4, mat: 'stone',
+    merlons: true });
+  b.soldier(0.6, F, 9.7, 'cloister', 'serjeant');
+  b.soldier(-5.4, F, 9.4, 'cloister yard');
+
+  // ---- WEST: the undercroft ----------------------------------------------
+  // The Warden stands behind the west wall with his ring reaching the arcade's
+  // two western piers. Until he is down they take 45% damage and the arcade
+  // will not come apart, whatever you throw at it.
+  b.wall({ x: -10.2, z: -1.0, axis: 'z', len: 15, thick: 0.72, courses: 5, mat: 'block',
+    merlons: true, slits: [{ t: -2.0, c0: 2, c1: 2 }, { t: 3.5, c0: 3, c1: 3 }] });
+  b.soldier(-7.6, F, -6.4, 'undercroft', 'warden');
+
+  for (const [cx, cz] of [[-5.6, 3.2], [6.2, 6.4], [-8.4, 6.0], [4.0, -5.2]]) b.crate(cx, cz);
+  return b.done({ arcTop, bellTop: bt.roofTop });
+}
+
+export const FACES4 = [
+  { name: 'The Arcade',   sub: 'thin piers under a stone roof — take a pier', a: 0 },
+  { name: 'Bell Tower',   sub: 'a picket along the walk, well spread', a: Math.PI / 2 },
+  { name: 'The Cloister', sub: 'a serjeant behind a thick low wall', a: Math.PI },
+  { name: 'Undercroft',   sub: 'the warden is behind this one', a: -Math.PI / 2 },
+];
+
+// ---------------------------------------------------------------------------
+// 5 — VANTWICK ON THE SOUND
+//
+// The finale, and the one castle where no single face is the answer. Each side
+// is a problem a DIFFERENT man solves, and the loadout does not hold enough of
+// any one of them to brute-force two faces the same way:
+//   north  the sea gate     — a long lintel on two piers, Rabble underneath
+//   east   the great hall   — stone walls but a TIMBER roof, a picket on it
+//   south  the donjon       — thick stone, a Serjeant on the roof
+//   west   the mole         — the Warden, and the only ground-level approach
+// ---------------------------------------------------------------------------
+export function buildLevel5(phys) {
+  const b = makeBuilder(phys);
+  b.ground();
+  b.plinth(17.5, 18.5);
+
+  // ---- NORTH: the sea gate -----------------------------------------------
+  const gp = b.pier(-5.6, -13.2, 7, 1.5, 1.4, 'stone');
+  b.pier(5.6, -13.2, 7, 1.5, 1.4, 'stone');
+  const gy = gp + 0.55;
+  phys.addBox(0, gy, -13.2, 7.4, 0.55, 1.35, { mat: 'stone', kind: 'lintel' });
+  const gw = phys.addBox(0, gy + 0.9, -13.2, 4.0, 0.35, 1.2, { mat: 'block', kind: 'walk' });
+  for (const dx of [-3.3, 3.3])
+    phys.addBox(dx, gy + 1.6, -13.2, 0.6, 0.35, 1.05, { mat: 'block', kind: 'merlon' });
+  b.banner(0, gy + 1.25, -13.2, 'sea gate', gw);
+  b.pack(0, F, -13.2, 'the gateway');
+  b.soldier(-1.9, gy + 1.25, -13.2, 'gate walk');   // between the merlons, not in one
+
+  // The flanking walls have to clear the piers by more than their nominal
+  // half-length suggests: a running bond's end cells reach out past len/2, so
+  // len 8.4 centred at 10.8 bit 0.3m into a pier whose outer face is at 7.1.
+  b.wall({ x: -11.6, z: -13.2, axis: 'x', len: 8.0, thick: 0.95, courses: 5, mat: 'block',
+    merlons: true });
+  b.wall({ x: 11.6, z: -13.2, axis: 'x', len: 8.0, thick: 0.95, courses: 5, mat: 'block',
+    merlons: true });
+
+  // ---- EAST: the great hall ----------------------------------------------
+  // Stone walls, TIMBER roof. Timber has a fifth of stone's hit points, so the
+  // roof is the soft spot on an otherwise solid building — and the men on it
+  // ride it down when it goes.
+  for (const dz of [-5.2, 4.4]) {
+    b.wall({ x: 13.4, z: dz, axis: 'z', len: 9.0, thick: 0.85, courses: 6, mat: 'block' });
+  }
+  const hallTop = F + 6 * CH * 2;
+  for (let i = 0; i < 7; i++) {
+    phys.addBox(13.4, hallTop + 0.22, -8.4 + i * 2.8, 2.0, 0.22, 1.35,
+      { mat: 'timber', kind: 'roof' });
+  }
+  b.picket(13.4, hallTop + 0.44, -0.4, 0, 10.0, 'the ridge');   // the roof's top surface
+
+  // ---- SOUTH: the donjon -------------------------------------------------
+  const dj = b.tower({ x: 0, z: 8.4, r: 4.4, t: 0.78, courses: 7, joistAt: 5,
+    doorFace: 1, spanBlocks: 3, mat: 'stone' });
+  b.banner(0, dj.roofTop, 8.4, 'donjon', dj.roofMid);
+  b.soldier(2.5, dj.roofTop, 8.0, 'donjon roof', 'serjeant');
+  b.soldier(-0.5, F, 8.4, 'donjon floor');
+
+  // ---- WEST: the mole ----------------------------------------------------
+  // Low, walkable, and the only face where the ground itself gets you in — so
+  // it is where the Warden stands, covering the donjon's west flank.
+  b.wall({ x: -13.8, z: -2.0, axis: 'z', len: 16, thick: 0.68, courses: 3, mat: 'block',
+    merlons: true, slits: [{ t: 0, c0: 1, c1: 1 }] });
+  b.soldier(-10.4, F, 1.2, 'the mole', 'warden');
+  b.soldier(-13.8, F + 3 * CH * 2, -5.4, 'mole walk');   // ON the wall, not beside it
+
+  for (const [cx, cz] of [[-7.2, -6.4], [7.8, -7.0], [-6.0, 5.4], [8.6, 9.2], [0, -6.0]])
+    b.crate(cx, cz);
+  return b.done({ gy, hallTop, donjonTop: dj.roofTop });
+}
+
+export const FACES5 = [
+  { name: 'The Sea Gate', sub: 'a long lintel on two piers, a huddle beneath', a: 0 },
+  { name: 'Great Hall',   sub: 'stone walls, a timber roof, men on the ridge', a: Math.PI / 2 },
+  { name: 'The Donjon',   sub: 'thick stone and a serjeant on top', a: Math.PI },
+  { name: 'The Mole',     sub: 'low and open — and the warden holds it', a: -Math.PI / 2 },
 ];

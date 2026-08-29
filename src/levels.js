@@ -9,7 +9,10 @@
 // orbitR scales with the castle. A small keep sat at radius 38 reads as a model
 // on a table and every shot is a long blind lob.
 
-import { buildLevel1, buildLevel2, buildLevel3, FACES1, FACES2, FACES3 } from './fortress.js';
+import {
+  buildLevel1, buildLevel2, buildLevel3, buildLevel4, buildLevel5,
+  FACES1, FACES2, FACES3, FACES4, FACES5,
+} from './fortress.js';
 
 export const THEMES = {
   // High summer. Bright, green, busy with life — the friendliest thing in the
@@ -68,6 +71,45 @@ export const THEMES = {
     props: { fences: 2, hay: 0, cart: 1, pond: 4, reeds: 30, ruin: 4, stones: 4, birds: 5,
       flocks: 0, woodpile: 1, graves: 3, windmill: false, chapel: true, jetty: true },
   },
+
+  // Hard winter. Almost no colour left in the ground, so the garrison's red and
+  // the fire of a burst are the only warm things on screen — which is exactly
+  // where you want the eye on the castle that first mixes the roster.
+  frost: {
+    sky: [[0.00, '#2c4a78'], [0.36, '#6d8cb4'], [0.58, '#adc0d2'], [0.80, '#dfe4e8'], [1.00, '#c9ccd2']],
+    fogColour: 0xd4dce4, fogNear: 100, fogFar: 430,
+    sunColour: 0xdfe8ff, sunPower: 3.0, sunHeight: 32, rake: 0.88,
+    hemiSky: 0xb9cde4, hemiGround: 0x9aa2a6, hemiPower: 1.32, fillPower: 0.66,
+    exposure: 1.10,
+    ground: 0xa8b0b4, patchA: 0xbcc4c6, patchB: 0x8f9a9e,
+    hills: [0x9aa6ae, 0xb0bac2, 0xc6ced6],
+    canopy: [0x3d5548, 0x476052, 0x35483d, 0x8f9c96],
+    trunk: 0x4a4038, rock: 0x8e9298, tuft: 0x8d9689,
+    flowers: [0xe8edf2, 0xc9d4dc],
+    scorch: 0x50554e, water: 0x53707e, plinth: 0x7e858a,
+    mix: { broadleaf: 0.1, conifer: 0.42, dead: 0.22, bush: 0.06, rock: 0.14, tuft: 0.06 },
+    props: { fences: 3, hay: 1, cart: 1, pond: 2, reeds: 4, ruin: 3, stones: 3, birds: 3,
+      flocks: 1, woodpile: 4, graves: 2, windmill: false, chapel: true, jetty: false },
+  },
+
+  // A storm coming in off the sound. The darkest, wettest, loudest weather in
+  // the game, on the castle that asks the most of you.
+  sound: {
+    sky: [[0.00, '#1b2a44'], [0.34, '#3f5470'], [0.56, '#6d7d8c'], [0.76, '#9a9a90'], [1.00, '#6f6a62']],
+    fogColour: 0x8b959c, fogNear: 90, fogFar: 380,
+    sunColour: 0xffd8b4, sunPower: 3.5, sunHeight: 24, rake: 0.92,
+    hemiSky: 0x7d90a6, hemiGround: 0x4a5348, hemiPower: 1.16, fillPower: 0.68,
+    exposure: 1.10,
+    ground: 0x5d6a52, patchA: 0x6b7758, patchB: 0x4a5544,
+    hills: [0x475448, 0x59635c, 0x74808a],
+    canopy: [0x39503a, 0x415a40, 0x2f4030],
+    trunk: 0x3c352d, rock: 0x6a6f74, tuft: 0x6b7554,
+    flowers: [0xd6d2c4, 0x8f9aa4],
+    scorch: 0x3a382f, water: 0x2f4a5a, plinth: 0x4e564a,
+    mix: { broadleaf: 0.1, conifer: 0.2, dead: 0.3, bush: 0.12, rock: 0.2, tuft: 0.08 },
+    props: { fences: 2, hay: 0, cart: 1, pond: 5, reeds: 22, ruin: 5, stones: 5, birds: 6,
+      flocks: 0, woodpile: 2, graves: 4, windmill: false, chapel: false, jetty: true },
+  },
 };
 
 export const LEVELS = [
@@ -103,6 +145,28 @@ export const LEVELS = [
     knights: 9,
     orbitR: 38,
     theme: 'marsh',
+  },
+  {
+    id: 4,
+    name: 'Stonefall Priory',
+    sub: 'An arcade, a bell tower, and a mixed garrison',
+    blurb: 'Ten. The roof is held up by four thin piers — take one.',
+    build: buildLevel4,
+    faces: FACES4,
+    knights: 10,
+    orbitR: 34,
+    theme: 'frost',
+  },
+  {
+    id: 5,
+    name: 'Vantwick on the Sound',
+    sub: 'Four faces, four different answers',
+    blurb: 'Ten men, eleven of them. No two sides want the same man.',
+    build: buildLevel5,
+    faces: FACES5,
+    knights: 10,
+    orbitR: 40,
+    theme: 'sound',
   },
 ];
 

@@ -16,6 +16,8 @@ export const SET = {
   showMarkers: true,
   leftHanded: false,
   reduceMotion: false,
+  camera: 'siege',        // siege | low | wide | wall — see game.js CAM_MODES
+  tutorial: true,         // the guided first siege; cleared once it is finished
   knights: 9,
 };
 

@@ -26,6 +26,11 @@ export const MODELS = {
   ready: false,
   knight: null,        // GLTF scene for our knights
   foe: null,           // GLTF scene for the garrison
+  brute: null,         // the Maul — a barbarian, in our colours
+  rogue: null,         // the Sapper and the Brothers
+  ranger: null,        // the Watch
+  hooded: null,        // the Rabble
+  mage: null,          // the Warden
   clips: {},           // name -> AnimationClip, shared across the Rig_Medium rig
 };
 
@@ -38,9 +43,13 @@ function load(loader, file) {
 export async function loadModels() {
   try {
     const loader = new GLTFLoader();
-    const [knight, foe, general, movement] = await Promise.all([
+    const [knight, foe, rogue, ranger, hooded, mage, general, movement] = await Promise.all([
       load(loader, 'Knight.glb'),
       load(loader, 'Barbarian.glb'),
+      load(loader, 'Rogue.glb'),
+      load(loader, 'Ranger.glb'),
+      load(loader, 'Rogue_Hooded.glb'),
+      load(loader, 'Mage.glb'),
       load(loader, 'Anims_General.glb'),
       load(loader, 'Anims_Movement.glb'),
     ]);
@@ -48,17 +57,29 @@ export async function loadModels() {
 
     MODELS.knight = knight.scene;
     MODELS.foe = (foe && foe.scene) || knight.scene;
+    // The Maul is a barbarian and the light types are rogues. Different
+    // ammunition has to be legible in the row and in the air, and a silhouette
+    // does that at thirty metres where a colour swatch does not.
+    MODELS.brute = MODELS.foe;
+    MODELS.rogue = (rogue && rogue.scene) || knight.scene;
+    // The garrison roster. Each foe type is a different SILHOUETTE, because at
+    // thirty metres through a dust cloud a colour swatch tells you nothing and
+    // a shape tells you what you are shooting at.
+    MODELS.ranger = (ranger && ranger.scene) || MODELS.foe;
+    MODELS.hooded = (hooded && hooded.scene) || MODELS.rogue;
+    MODELS.mage = (mage && mage.scene) || MODELS.rogue;
 
     // The animation packs share one rig with the characters, so their clips
     // retarget for free — that is the whole point of KayKit's Rig_Medium.
-    for (const src of [knight, foe, general, movement]) {
+    for (const src of [knight, foe, rogue, ranger, hooded, mage, general, movement]) {
       if (!src) continue;
       for (const c of src.animations || []) {
         if (!MODELS.clips[c.name]) MODELS.clips[c.name] = c;
       }
     }
 
-    for (const s of [MODELS.knight, MODELS.foe]) {
+    for (const s of [MODELS.knight, MODELS.foe, MODELS.rogue,
+      MODELS.ranger, MODELS.hooded, MODELS.mage]) {
       s.traverse(o => {
         if (o.isMesh || o.isSkinnedMesh) {
           o.castShadow = true;
@@ -73,6 +94,11 @@ export async function loadModels() {
     }
     mergeCharacter(MODELS.knight, /* keepSeparate */ /cape/i);
     mergeCharacter(MODELS.foe, null);
+    if (MODELS.rogue !== MODELS.knight) mergeCharacter(MODELS.rogue, /cape|cloak/i);
+    for (const k of ['ranger', 'hooded', 'mage']) {
+      const m = MODELS[k];
+      if (m && m !== MODELS.foe && m !== MODELS.rogue) mergeCharacter(m, null);
+    }
 
     MODELS.ready = true;
     return true;
@@ -153,7 +179,7 @@ const IDENTITY = new THREE.Matrix4();
 // `bodyTint` recolours everything, which is what the garrison wants — they need
 // to read as hot red targets from thirty metres.
 export function spawnCharacter(which, { capeTint, bodyTint } = {}) {
-  const src = which === 'foe' ? MODELS.foe : MODELS.knight;
+  const src = MODELS[which] || MODELS.knight;
   if (!src) return null;
   const g = skinnedClone(src);
   if (capeTint || bodyTint) {

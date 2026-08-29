@@ -9,6 +9,7 @@ import { faceAt } from './fortress.js';
 import { LEVELS, THEMES } from './levels.js';
 import { SET } from './settings.js';
 import { KNIGHT_PALETTES } from './render.js';
+import { TYPES, TYPE_ORDER, LOADOUTS, loadoutList, loadoutTotal } from './knights.js';
 
 // Orbit radius is per LEVEL now: a small keep sat at 38 reads as a model on a
 // table and every shot becomes a long blind lob.
@@ -30,6 +31,10 @@ export const ELEV_MIN = 6 * Math.PI / 180, ELEV_MAX = 66 * Math.PI / 180;
 export const YAW_MAX = 24 * Math.PI / 180;
 const CENTRE = new THREE.Vector3(0, 6, 0);
 const KNIGHT_R = 0.56;
+const SPLIT_GAP = 1.25, SPLIT_KICK = 1.6;   // see dive(): measured, not guessed
+
+export const CAM_MODES = ['siege', 'low', 'wide', 'wall'];
+export const CAM_NAMES = { siege: 'Siege', low: 'Low', wide: 'Wide', wall: 'Wall' };
 const SETTLE_SPEED = 0.42, SETTLE_HOLD = 0.5, SETTLE_MAX = 7.0;
 
 export const S = { AIM: 'aim', FLIGHT: 'flight', SETTLE: 'settle', OVER: 'over' };
@@ -40,6 +45,7 @@ export class Game {
     this.sfx = sfx || null;
     this.levelIdx = Math.max(0, Math.min(LEVELS.length - 1, opts.level || 0));
     this.knightOverride = opts.knights || 0;
+    this.camMode = SET.camera || 'siege';
     this.reset();
   }
 
@@ -64,7 +70,13 @@ export class Game {
     const k = Math.sqrt(this.orbitR / SPEED_REF_R);
     this.speedMin = SPEED_MIN * k;
     this.speedMax = SPEED_MAX * k;
-    this.knightsTotal = this.knightOverride || L.knights;
+    // The loadout is the hand you are dealt for this castle. Spent from the
+    // front unless you pick something else, and the mix is half the puzzle.
+    this.loadCounts = { ...(LOADOUTS[L.id] || { lance: L.knights }) };
+    if (this.knightOverride) this.loadCounts = { lance: this.knightOverride };
+    this.loadout = loadoutList(this.loadCounts);
+    this.knightsTotal = this.loadout.length || L.knights;
+    this.selected = this.loadout[0] || 'lance';
     // Who is in the company this siege. Rotated by level so the same castle
     // does not always field the same men, but stable within a run.
     this.palettes = [];
@@ -74,6 +86,7 @@ export class Game {
     this.phys = new Physics();
     const b = L.build(this.phys);
     this.banners = b.banners;
+    this.phys.refreshWardens();
     this.bannersDown = 0;
     this.soldiers = b.soldiers;
     this.soldiersTotal = b.soldiers.length;
@@ -108,11 +121,12 @@ export class Game {
     this.phys.step();
     this.phys.impacts.length = 0;
     this.phys.breaks.length = 0;
+    this.phys.bursts.length = 0;
 
     if (this.rd) {
       this.rd.orbitR = this.orbitR;
       this.rd.buildEnvironment(THEMES[L.theme]);
-      this.rd.buildWaiting(this.palettes);
+      this.rd.buildWaiting(this.palettes, this.loadout);
       for (const p of this.phys.list) this.rd.addPart(p);
       // Hook AFTER the initial build, so these only fire during play.
       this.phys.onAdd = (p) => this.rd.addPart(p);
@@ -198,7 +212,14 @@ export class Game {
     const pts = [];
     let hit = null;
     let x = p.x, y = p.y, z = p.z, vx = v.x, vy = v.y, vz = v.z;
-    if (!this._probeBall) this._probeBall = new R.Ball(KNIGHT_R);
+    // The preview has to be the shot you are about to take: a Maul is fatter
+    // than a Brother, and a reticle that lies about which one is loaded is
+    // worse than no reticle.
+    const pr = (TYPES[this.selected] || TYPES.lance).radius;
+    if (!this._probeBall || this._probeR !== pr) {
+      this._probeBall = new R.Ball(pr);
+      this._probeR = pr;
+    }
     const IDQ = { x: 0, y: 0, z: 0, w: 1 };
 
     for (let i = 0; i < maxPts; i++) {
@@ -231,15 +252,50 @@ export class Game {
     return { pts, hit };
   }
 
+  // ---- the loadout --------------------------------------------------------
+
+  // What is left, in the order it will be spent.
+  remainingList() {
+    const out = [];
+    for (const id of TYPE_ORDER) {
+      const n = this.loadCounts[id] || 0;
+      for (let i = 0; i < n; i++) out.push(id);
+    }
+    return out;
+  }
+
+  selectType(id) {
+    if (this.state !== S.AIM) return false;
+    if (!(this.loadCounts[id] > 0)) return false;
+    this.selected = id;
+    return true;
+  }
+
+  _pickNext() {
+    if (this.loadCounts[this.selected] > 0) return;
+    this.selected = TYPE_ORDER.find(id => this.loadCounts[id] > 0) || null;
+  }
+
   // ---- firing -------------------------------------------------------------
 
   fire() {
     if (this.state !== S.AIM || this.knights <= 0) return false;
+    const id = this.loadCounts[this.selected] > 0
+      ? this.selected
+      : TYPE_ORDER.find(t => this.loadCounts[t] > 0);
+    if (!id) return false;
+    const T = TYPES[id];
+    this.shotType = T;
+    this.loadCounts[id]--;
+
     const m = this.muzzle(), v = this.velocity();
-    this.knight = this.phys.addBall(m.x, m.y, m.z, KNIGHT_R, { kind: 'knight' });
+    this.knight = this.phys.addBall(m.x, m.y, m.z, T.radius,
+      { kind: 'knight', type: T, density: T.density });
     this.knight.body.setLinvel({ x: v.x, y: v.y, z: v.z }, true);
     this.knight.body.setAngvel({ x: -v.z * 0.35, y: 0, z: v.x * 0.35 }, true);
     this.knights--;
+    this._pickNext();
+    this.extras = [];
     this.state = S.FLIGHT;
     this.dived = false;
     this.shotT = 0;
@@ -252,7 +308,7 @@ export class Game {
       // man who was standing at the front of the row a moment ago.
       const pal = this.palettes[this.palettes.length - 1 - this.knights];
       if (this.knightMesh) this.rd.scene.remove(this.knightMesh);
-      this.knightMesh = this.rd.knightMesh(pal);
+      this.knightMesh = this.rd.knightMesh(pal, T);
       this.knightPal = pal;
       this.knightMesh.visible = true;
       this.rd.hideArc();
@@ -264,18 +320,65 @@ export class Game {
     return true;
   }
 
-  // The second tap. One per shot: trade your arc for a steep, fast drop.
+  // The second tap. One per shot, and it does something different for every
+  // kind of man on the machine — that is where the mid-flight decision lives.
   dive() {
     if (this.state !== S.FLIGHT || this.dived || !this.knight) return false;
     this.dived = true;
-    const v = this.knight.body.linvel();
-    this.knight.body.setLinvel({ x: v.x * 0.72, y: Math.min(v.y, 0) - 26, z: v.z * 0.72 }, true);
-    this.knight.body.setAngvel({ x: 0, y: 0, z: 0 }, true);
+    const T = this.shotType || TYPES.lance;
+    const b = this.knight.body;
+    const v = b.linvel();
+    const t = b.translation();
+
+    switch (T.dive) {
+      case 'pound':
+        // Straight down, hard. A Maul's whole argument is arriving with all of
+        // its weight in one place.
+        b.setLinvel({ x: v.x * 0.35, y: Math.min(v.y, 0) - 34, z: v.z * 0.35 }, true);
+        b.setAngvel({ x: 0, y: 0, z: 0 }, true);
+        break;
+
+      case 'burst':
+        // Touch it off in the air, so the blast clears a wall walk instead of
+        // wasting itself on the wall.
+        this.phys.burstAt(this.knight, t);
+        this.knight = null;
+        if (this.knightMesh) this.knightMesh.visible = false;
+        break;
+
+      case 'split': {
+        // One becomes three, spread across the line of flight.
+        const right = new THREE.Vector3(-v.z, 0, v.x);
+        if (right.lengthSq() < 0.001) right.set(1, 0, 0);
+        right.normalize();
+        // Most of the spread is an OFFSET, not a sideways kick. A kick large
+        // enough to open the formation on a late tap threw them off the field
+        // entirely on an early one — 21 metres apart, both missing. The offset
+        // is the same whenever you tap; the kick only opens it a little more.
+        for (const side of [-1, 1]) {
+          const e = this.phys.addBall(
+            t.x + right.x * side * SPLIT_GAP, t.y + 0.25, t.z + right.z * side * SPLIT_GAP,
+            T.radius, { kind: 'knight', type: T, density: T.density });
+          e.body.setLinvel({
+            x: v.x * 0.97 + right.x * side * SPLIT_KICK,
+            y: v.y * 0.97 + 0.9,
+            z: v.z * 0.97 + right.z * side * SPLIT_KICK,
+          }, true);
+          this.extras.push(e);
+          if (this.rd) this.rd.addExtraKnight(e, this.knightPal, T);
+        }
+        break;
+      }
+
+      default:
+        b.setLinvel({ x: v.x * 0.72, y: Math.min(v.y, 0) - 26, z: v.z * 0.72 }, true);
+        b.setAngvel({ x: 0, y: 0, z: 0 }, true);
+    }
+
     if (this.sfx) this.sfx.dive();
     if (this.rd) {
-      const t = this.knight.body.translation();
       this.rd.spark(t.x, t.y, t.z, 0.7, 9);
-      this.rd.kick(0.1);
+      this.rd.kick(T.dive === 'burst' ? 0.34 : 0.1);
     }
     return true;
   }
@@ -292,9 +395,22 @@ export class Game {
 
   _tick() {
     this.phys.step();
+    // A Sapper deletes itself mid-step, and everything downstream holds a
+    // reference to the body it just freed. Reading a freed Rapier body is not
+    // an exception you can catch — it traps the whole wasm module — so the
+    // reference is dropped HERE, once, before anything else can touch it.
+    if (this.knight && this.knight.dead) this.knight = null;
+    if (this.extras && this.extras.length) {
+      this.extras = this.extras.filter(e => !e.dead);
+    }
     if (this.state === S.FLIGHT || this.state === S.SETTLE) this.shotT += this.phys.world.timestep;
     this._drain();
 
+    if (this.state === S.FLIGHT && !this.knight) {
+      // Nothing left in the air. A Sapper that has gone off is a finished shot.
+      this.state = S.SETTLE;
+      this.settleT = 0;
+    }
     if (this.state === S.FLIGHT && this.knight) {
       const t = this.knight.body.translation();
       const v = this.knight.body.linvel();
@@ -372,6 +488,17 @@ export class Game {
       if (this.sfx && P.breaks.length > 2) this.sfx.rubble(P.breaks.length);
       P.breaks.length = 0;
     }
+    if (P.bursts.length) {
+      for (const b of P.bursts) {
+        if (this.rd) this.rd.burst(b.x, b.y, b.z, b.r);
+        if (this.sfx) this.sfx.shatter('stone', this._panAt(b.x, b.z));
+        this.hitstop = Math.max(this.hitstop, 0.07);
+        // The Sapper is spent on that one bang, so the shot is over.
+        if (this.knightMesh) this.knightMesh.visible = false;
+        this.knight = null;
+      }
+      P.bursts.length = 0;
+    }
   }
 
   // Soldiers are the objective. Two ways down, and the game says which — being
@@ -414,6 +541,9 @@ export class Game {
   }
 
   _endShot() {
+    for (const e of this.extras || []) if (!e.dead) this.phys.remove(e);
+    this.extras = [];
+    if (this.rd) this.rd.clearExtraKnights();
     if (this.knight) {
       this.phys.remove(this.knight);
       this.knight = null;
@@ -456,6 +586,73 @@ export class Game {
     };
   }
 
+  // ---- camera views -------------------------------------------------------
+  //
+  // One camera was enough to aim with and not enough to WATCH with. Each view
+  // changes two framings — how you aim, and how the shot is followed — because
+  // those are the only two moments the camera has a job to do.
+  //
+  //   siege  over the shoulder, the arc reads across the frame   (aim)
+  //   low    down at the arm, riding tight behind the man        (impact)
+  //   wide   pulled back and high, the whole arc at once         (planning)
+  //   wall   the shot followed from the CASTLE, coming at you    (spectacle)
+  //
+  // Every one of them still points at the same place, so switching never
+  // costs you the aim you had.
+
+  _lowAimCam() {
+    const L = this.launchPos(), f = this.forward();
+    const r = new THREE.Vector3(-f.z, 0, f.x);
+    return {
+      pos: new THREE.Vector3(L.x - f.x * 3.6 + r.x * 1.5, 2.0 + this.orbitR * 0.028,
+        L.z - f.z * 3.6 + r.z * 1.5),
+      look: CENTRE.clone().setY(3.0 + this.orbitR * 0.10),
+    };
+  }
+
+  // Wide gets its distance from HEIGHT, not from standing further back. Pulling
+  // back 24m put the camera out past the treeline — big scenery starts at
+  // orbitR+19 and a conifer ended up between it and the castle. Going up
+  // instead frames the same whole-field shot from inside the siege ring.
+  _wideAimCam() {
+    const L = this.launchPos(), f = this.forward();
+    const r = new THREE.Vector3(-f.z, 0, f.x);
+    const back = 4 + this.orbitR * 0.16, side = 5 + this.orbitR * 0.16;
+    return {
+      pos: new THREE.Vector3(L.x - f.x * back + r.x * side,
+        16 + this.orbitR * 0.62, L.z - f.z * back + r.z * side),
+      look: new THREE.Vector3((L.x + CENTRE.x) * 0.5, 3.0 + this.orbitR * 0.05,
+        (L.z + CENTRE.z) * 0.5),
+    };
+  }
+
+  // Parked past the far side of the castle on the shot's own bearing, looking
+  // back down the line of fire. The knight grows in the frame and the wall
+  // comes apart towards you instead of away from you.
+  _wallCam(kt) {
+    const f = this.forward();
+    const d = this.orbitR * 0.56;
+    // Looking straight at the incoming knight put him 38m away and the castle
+    // — the thing that is about to come apart — down at the bottom of frame
+    // with half the picture as empty field. The look point is BLENDED toward
+    // the castle, so the wall stays framed and he grows into it.
+    const look = CENTRE.clone().setY(4.0 + this.orbitR * 0.06);
+    if (kt) look.lerp(new THREE.Vector3(kt.x, kt.y + 0.6, kt.z), 0.3);
+    return {
+      pos: new THREE.Vector3(CENTRE.x + f.x * d, 6.5 + this.orbitR * 0.18,
+        CENTRE.z + f.z * d),
+      look,
+    };
+  }
+
+  cycleCam(dir = 1) {
+    const i = CAM_MODES.indexOf(this.camMode);
+    this.camMode = CAM_MODES[(i + dir + CAM_MODES.length) % CAM_MODES.length];
+    return this.camMode;
+  }
+
+  camName() { return CAM_NAMES[this.camMode] || 'Siege'; }
+
   _surveyCam() {
     const L = this.launchPos(), f = this.forward();
     return {
@@ -468,21 +665,39 @@ export class Game {
     if (!this.rd) return;
     const cam = this.rd.camera;
     let target;
+    const M = this.camMode;
     if (this.state === S.FLIGHT && this.knight) {
       const t = this.knight.body.translation();
       const v = this.knight.body.linvel();
       const d = new THREE.Vector3(v.x, 0, v.z);
       if (d.lengthSq() < 0.01) d.copy(this.forward());
       d.normalize();
-      target = {
-        pos: new THREE.Vector3(t.x - d.x * 15, Math.max(5.5, t.y + 6.5), t.z - d.z * 15),
-        look: new THREE.Vector3(t.x + d.x * 5, t.y + 1, t.z + d.z * 5),
-      };
+      if (M === 'wall') {
+        target = this._wallCam(t);
+      } else {
+        // Low rides close and level with him; wide hangs back so the arc still
+        // fits in frame; siege is the middle.
+        const back = M === 'low' ? 7 : M === 'wide' ? 26 : 15;
+        const up = M === 'low' ? 1.9 : M === 'wide' ? 12 : 6.5;
+        const floor = M === 'low' ? 2.4 : M === 'wide' ? 10 : 5.5;
+        target = {
+          pos: new THREE.Vector3(t.x - d.x * back, Math.max(floor, t.y + up), t.z - d.z * back),
+          look: new THREE.Vector3(t.x + d.x * 5, t.y + 1, t.z + d.z * 5),
+        };
+      }
     } else if (this.state === S.SETTLE || this.state === S.OVER) {
-      target = this._surveyCam();
+      target = M === 'wall' ? this._wallCam(null) : this._surveyCam();
     } else {
-      target = this._aimCam();
+      target = M === 'low' ? this._lowAimCam()
+        : M === 'wide' ? this._wideAimCam() : this._aimCam();
     }
+    // The wall view is a cut, not a pan: swinging across the whole field to get
+    // behind the castle took two full seconds and you missed the impact.
+    if (M === 'wall' && this._lastMode !== 'wall') {
+      cam.position.copy(target.pos);
+      this._look = target.look.clone();
+    }
+    this._lastMode = M;
     const k = 1 - Math.pow(0.0009, dt);
     cam.position.lerp(target.pos, k);
     if (!this._look) this._look = target.look.clone();
@@ -543,6 +758,8 @@ export class Game {
       const v = this.knight.body.linvel();
       rd.poseFlying(this.knightMesh, v, dt);
     }
+    rd.syncExtraKnights(dt);
+    rd._stepTypeFx(dt);
     rd.animateWaiting(dt, this.tAnim = (this.tAnim || 0) + dt);
 
     // Trajectory.

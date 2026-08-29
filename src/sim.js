@@ -10,14 +10,20 @@
 
 import { Game, S, SPEED_MIN, SPEED_MAX, YAW_MAX } from './game.js';
 import { LEVELS } from './levels.js';
+import { TYPE_ORDER, LOADOUTS, loadoutTotal } from './knights.js';
 import { seed } from './rand.js';
 
 const N = 0, E = Math.PI / 2, SO = Math.PI, W = -Math.PI / 2;
 export const FACE_ANGLE = { north: N, east: E, south: SO, west: W };
 
-// Level index defaults to the LAST one — the assertions were all written
-// against Blackmere and its geometry.
-let SIM_LEVEL = LEVELS.length - 1;
+// PINNED to Blackmere (index 2), not to the last level. T1-T14 are written
+// against Blackmere's exact geometry — its nine posts, its three standards, its
+// four named faces — so when two more castles were added, "the last one"
+// silently retargeted the whole suite at Vantwick and nine assertions failed
+// for the only reason that they were measuring a different building.
+// Structural properties that must hold for EVERY castle live in T15.
+const BLACKMERE = 2;
+let SIM_LEVEL = BLACKMERE;
 export function setSimLevel(i) { SIM_LEVEL = i; }
 
 function fresh(sd = 12345, knights = 0) {
@@ -33,6 +39,8 @@ const breathe = () => new Promise(r => setTimeout(r, 0));
 // ---------------------------------------------------------------------------
 // assertions
 // ---------------------------------------------------------------------------
+
+let lastPeak = 0;
 
 export async function runSim(log = console.log) {
   const out = [];
@@ -413,6 +421,197 @@ export async function runSim(log = console.log) {
 
 
 
+  // ---- T14 every kind of man has a job nothing else does ------------------
+  //
+  // The point of four kinds of ammunition is that a face which was wrong for
+  // the last man is right for this one. That only holds if each type actually
+  // WINS at something, so this fires the same grid with every type and
+  // compares. A type that is never the best answer is a slot the player learns
+  // to ignore — which is why the Hook was cut; see knights.js.
+  {
+    for (const id of TYPE_ORDER) {
+      ok(`T14-${id} is issued somewhere`,
+        LEVELS.some(l => (LOADOUTS[l.id] || {})[id] > 0), id);
+    }
+    for (const l of LEVELS) {
+      const n = loadoutTotal(LOADOUTS[l.id] || {});
+      ok(`T14a ${l.name} issues exactly its knight count`, n === l.knights,
+        `${n} issued vs ${l.knights} counter`);
+    }
+    await breathe();
+
+    const grid = [[18, 1.0], [24, 1.0], [30, 0.85]];
+    const prof = {};
+    for (const id of TYPE_ORDER) {
+      let down = 0, broke = 0, downD = 0;
+      for (const [e, pw] of grid) {
+        for (const dived of [false, true]) {
+          seed(4242);
+          const g = new Game(null, null, { knights: 2, level: SIM_LEVEL });
+          g.loadCounts[id] = 2; g.selected = id;
+          g.shoot(0, e, pw);
+          if (dived) { for (let i = 0; i < 34; i++) g._tick(); g.dive(); }
+          g.settleOut(14);
+          if (dived) downD += g.soldiersDown;
+          else { down += g.soldiersDown; broke += g.broken; }
+          g.phys.dispose();
+        }
+      }
+      prof[id] = { down, broke, downD };
+      await breathe();
+    }
+
+    // The Maul is the answer to masonry. If it does not out-break the Lance by
+    // a clear margin it is just a slower Lance.
+    ok('T14b the Maul out-breaks the Lance', prof.maul.broke > prof.lance.broke * 1.5,
+      `maul ${prof.maul.broke} vs lance ${prof.lance.broke} blocks`);
+
+    // The Sapper is the answer to men standing together, and it has to be BAD
+    // at walls or it is strictly better than the Maul.
+    ok('T14c the Sapper out-kills the Lance', prof.sapper.down > prof.lance.down,
+      `sapper ${prof.sapper.down} vs lance ${prof.lance.down} down`);
+    ok('T14d and is far worse at masonry than the Maul',
+      prof.sapper.broke < prof.maul.broke * 0.5,
+      `sapper ${prof.sapper.broke} vs maul ${prof.maul.broke} blocks`);
+
+    // The Brothers exist to be split. If they are as good un-split, the second
+    // tap is decoration and the type has no decision in it. This gets its own
+    // wider grid: the three-aim profile above could not separate them, and
+    // widening it for every type would double the suite's runtime.
+    {
+      let un = 0, sp = 0;
+      // The full grid the type was tuned on. A six-aim subset could not see
+      // the effect at all (5 against 7) while the twenty-aim grid it was
+      // measured on shows 8 against 19 — the subset was sampling the aims
+      // where a single Brother happens to land on someone.
+      const AIMS = [];
+      for (const e of [12, 18, 24, 30, 36]) for (const pw of [0.6, 0.75, 0.9, 1.0]) AIMS.push([e, pw]);
+      for (const [e, pw] of AIMS) {
+        for (const dived of [false, true]) {
+          seed(4242);
+          const g = new Game(null, null, { knights: 2, level: SIM_LEVEL });
+          g.loadCounts.brothers = 2; g.selected = 'brothers';
+          g.shoot(0, e, pw);
+          // Tapped where the type WANTS to be tapped — the same 42%-of-flight
+          // the bot uses. A fixed tick count taps at a different point on every
+          // arc, so it was measuring the harness's timing, not the split.
+          if (dived) {
+            for (let i = 0; i < 400 && g.state === S.FLIGHT; i++) {
+              g._tick();
+              const t = g.knight && g.knight.body.translation();
+              if (!t || Math.hypot(t.x, t.z) < g.orbitR * 0.55) break;
+            }
+            g.dive();
+          }
+          g.settleOut(14);
+          if (dived) sp += g.soldiersDown; else un += g.soldiersDown;
+          g.phys.dispose();
+        }
+      }
+      ok('T14e the Brothers are much better split than not', sp > un * 1.8,
+        `${un} down unsplit vs ${sp} split, over ${AIMS.length} aims`);
+      await breathe();
+    }
+
+    // Nobody is dominant: no type leads at both jobs at once.
+    const topKill = TYPE_ORDER.reduce((a, b) => (prof[a].down >= prof[b].down ? a : b));
+    const topBreak = TYPE_ORDER.reduce((a, b) => (prof[a].broke >= prof[b].broke ? a : b));
+    ok('T14f no type is best at both killing and breaking', topKill !== topBreak,
+      `best killer ${topKill}, best breaker ${topBreak}`);
+
+    // And nothing may reach an absurd speed. An unscaled blast impulse once
+    // launched a 60-gramme rail cap at 8.5 km/s, which cleared a nine-man
+    // garrison in a single shot and read on screen as a bug.
+    let peak = 0;
+    {
+      seed(4242);
+      const g = new Game(null, null, { knights: 2, level: SIM_LEVEL });
+      g.loadCounts.sapper = 2; g.selected = 'sapper';
+      g.shoot(0, 18, 1.0);
+      // Burst it OVER the castle, not thirty metres short of it. The first
+      // version of this test dived after 20 ticks, detonated in empty air, and
+      // reported a peak of 1 m/s — it was measuring nothing at all.
+      for (let i = 0; i < 400; i++) {
+        g._tick();
+        if (!g.knight) break;
+        const t = g.knight.body.translation();
+        if (Math.hypot(t.x, t.z) < 11) break;
+      }
+      g.dive();
+      for (let i = 0; i < 240; i++) {
+        g._tick();
+        for (const p of g.phys.list) {
+          if (p.fixed) continue;
+          const v = p.body.linvel();
+          peak = Math.max(peak, Math.hypot(v.x, v.y, v.z));
+        }
+      }
+      g.phys.dispose();
+    }
+    ok('T14g nothing reaches an absurd speed', peak < 120, `peak ${peak.toFixed(0)} m/s`);
+    await breathe();
+  }
+
+
+  // ---- T15 every castle in the campaign, not just the tuned one -----------
+  //
+  // T1-T14 measure Blackmere in detail. These are the properties that have to
+  // hold for all five, and they are the ones that actually break when a new
+  // castle is written: a fortress that eats itself on frame one is invisible
+  // in a screenshot and fatal in play.
+  {
+    for (let i = 0; i < LEVELS.length; i++) {
+      const L = LEVELS[i];
+      setSimLevel(i);
+      const g = fresh(4242);
+      const a = audit(g);
+      ok(`T15a ${L.name}: no interpenetration at spawn`, a.overlaps.length === 0,
+        a.overlaps.slice(0, 2).map(o => `${o.a}/${o.b}@${o.at} by ${o.by}`).join(' ; '));
+      ok(`T15b ${L.name}: nothing floats`, a.floaters.length === 0,
+        a.floaters.slice(0, 2).map(o => `${o.kind}@${o.at}`).join(' ; '));
+
+      const spawn = g.phys.list.filter(p => !p.fixed).map(p => {
+        const t = p.body.translation(); return { p, x: t.x, y: t.y, z: t.z };
+      });
+      tick(g, 300);
+      let worst = 0;
+      for (const sp of spawn) {
+        if (sp.p.dead) { worst = 99; break; }
+        const t = sp.p.body.translation();
+        worst = Math.max(worst, Math.hypot(t.x - sp.x, t.y - sp.y, t.z - sp.z));
+      }
+      ok(`T15c ${L.name}: stands up on its own`, worst < 0.32 && g.broken === 0,
+        `drift ${worst.toFixed(3)}m, ${g.broken} broke`);
+      ok(`T15d ${L.name}: the garrison does not fall over`, g.soldiersDown === 0);
+      ok(`T15e ${L.name}: every post has a firing solution`,
+        g.soldiers.every(sol => g.solveSoldier(sol, false) || g.solveSoldier(sol, true)),
+        `${g.soldiers.filter(sol => !(g.solveSoldier(sol, false) || g.solveSoldier(sol, true))).length} unreachable`);
+      g.phys.dispose();
+      await breathe();
+    }
+
+    // Winnable, with the loadout it is actually issued, by a bot that knows
+    // what each type is for. Anything the bot cannot clear at all is a castle
+    // that needs a human to be better than the harness, and that is a claim
+    // worth making deliberately rather than by accident.
+    const clears = [];
+    for (let i = 0; i < LEVELS.length; i++) {
+      setSimLevel(i);
+      const runs = [3, 11, 23].map(sd => bot(sd));
+      const w = runs.filter(r => r.won).length;
+      const avg = runs.reduce((n, r) => n + r.down, 0) / runs.length;
+      clears.push({ name: LEVELS[i].name, w, avg, total: runs[0].total });
+      ok(`T15f ${LEVELS[i].name}: the bot gets most of the garrison`,
+        avg >= runs[0].total * 0.6, `${w}/3 clears, avg ${avg.toFixed(1)}/${runs[0].total}`);
+      await breathe();
+    }
+    ok('T15g the campaign is winnable end to end',
+      clears.every(c => c.w > 0 || c.avg >= c.total * 0.75),
+      clears.map(c => `${c.name.split(' ')[0]} ${c.w}/3`).join(', '));
+    setSimLevel(BLACKMERE);
+  }
+
+
   const summary = `\n${pass} passed, ${fail} failed`;
   out.push(summary); log(summary);
   return { pass, fail, lines: out };
@@ -448,6 +647,48 @@ export const BEST = {
 // only balance number worth trusting: a fixed shot list measures the plan, and
 // a human with the arc preview aims at least this well.
 
+// The block a soldier is standing on. An armoured man cannot be shot off a
+// wall — the wall has to come out from under him — so the bot has to be able
+// to aim at a SUPPORT, not just at a body. Without this it fired direct shots
+// at a Serjeant taking 30% damage, failed, and reported the castle unwinnable.
+function supportUnder(g, sol) {
+  const t = sol.body.translation();
+  let best = null, bestY = -1e9;
+  for (const p of g.phys.list) {
+    if (p.fixed || p.dead || p.kind === 'soldier' || p.kind === 'debris'
+      || p.kind === 'ragdoll' || p.kind === 'banner') continue;
+    const q = p.body.translation();
+    if (q.y > t.y - sol.half.y + 0.05) continue;          // must be below him
+    if (Math.hypot(q.x - t.x, q.z - t.z) > 1.6) continue;  // and under him
+    if (q.y > bestY) { bestY = q.y; best = p; }
+  }
+  return best;
+}
+
+// Live soldiers within `r` of this one, himself included. A cluster is what a
+// Sapper is for, and the bot has to be able to see one.
+function clusterAt(live, sol, r) {
+  const t = sol.body.translation();
+  return live.filter(s => {
+    const q = s.body.translation();
+    return Math.hypot(q.x - t.x, q.y - t.y, q.z - t.z) <= r;
+  });
+}
+
+// The bot picks the man on the arm as well as the aim. A harness that fires
+// whatever happens to be next in the loadout is measuring a player who has not
+// noticed the rack, and every castle built around choosing a type reads as
+// unwinnable to it.
+function chooseType(g, plan) {
+  const want = plan.want;
+  if (want && g.loadCounts[want] > 0) return want;
+  // Fall back down a preference order rather than to whatever is first: a
+  // Sapper thrown at a wall is a wasted shot however few Mauls are left.
+  const order = plan.fallback || ['lance', 'maul', 'brothers', 'sapper'];
+  return order.find(id => g.loadCounts[id] > 0)
+    || TYPE_ORDER.find(id => g.loadCounts[id] > 0);
+}
+
 export function bot(sd = 7, opts = {}) {
   const g = fresh(sd, opts.knights || 0);
   const log = [];
@@ -455,23 +696,88 @@ export function bot(sd = 7, opts = {}) {
   while (g.state === S.AIM && g.knights > 0) {
     const live = g.soldiers.filter(x => !x.dead && x.up0 !== 0);
     if (!live.length) break;
-    // Nearest to the ring first, and prefer a flat shot; fall back to a lob.
-    live.sort((a, b) => b.body.translation().y - a.body.translation().y);
-    let aim = null, target = null;
+
+    // A Warden makes everything near him take 45% damage, so he is always
+    // worth taking first — anything else is half-price work. After him,
+    // highest first, because a man on a wall is the one a collapse also takes.
+    live.sort((a, b) => {
+      const w = (b.shore ? 1 : 0) - (a.shore ? 1 : 0);
+      if (w) return w;
+      return b.body.translation().y - a.body.translation().y;
+    });
+
+    let aim = null, target = null, plan = null;
     for (const s of live) {
-      aim = g.solveSoldier(s, false) || g.solveSoldier(s, true);
-      if (aim) { target = s; break; }
+      const armoured = (s.armour || 1) < 0.6;
+      const pack = clusterAt(live, s, 2.4);
+
+      // Three candidate plans in priority order, each with the man it wants.
+      const plans = [];
+      if (armoured) {
+        const sup = supportUnder(g, s);
+        // Aim at what holds him up, with the heaviest thing available.
+        if (sup) plans.push({ at: sup, want: 'maul', why: 'support', fallback: ['maul', 'lance', 'brothers', 'sapper'] });
+      }
+      if (pack.length >= 2) {
+        plans.push({ at: s, want: 'sapper', why: 'pack', fallback: ['sapper', 'brothers', 'lance', 'maul'] });
+      }
+      plans.push({ at: s, want: armoured ? 'maul' : 'lance', why: 'direct',
+        fallback: armoured ? ['maul', 'brothers', 'lance', 'sapper'] : ['lance', 'brothers', 'maul', 'sapper'] });
+
+      for (const pl of plans) {
+        const q = pl.at.body ? pl.at.body.translation() : pl.at;
+        aim = g.solve(q.x, q.y, q.z, 0.9, false)
+          || solveAt(g, q, false) || solveAt(g, q, true);
+        if (aim) { target = s; plan = pl; break; }
+      }
+      if (aim) break;
     }
     if (!aim) { unreachable++; break; }
+
+    g.selected = chooseType(g, plan);
     const before = g.soldiersDown;
     g.shoot(aim.angle, aim.elevDeg, aim.power);
+
+    // The bot has to be able to play the second tap, or it is measuring a
+    // player who ignores half the game — and reporting the level unwinnable
+    // for it. It taps at the point on the arc where that type wants it:
+    //   Brothers  open early, so the three of them arrive spread
+    //   Sapper    burst just short of the target, over the men
+    //   Maul      pound late, once it is over the wall
+    // A Lance is left to fly, because a dive shortens its reach and the bot's
+    // solution was computed for the full arc.
+    const T = g.shotType;
+    if (T && T.dive !== 'dive') {
+      // Triggered on DISTANCE to the castle, not on a fraction of an estimated
+      // flight time. The time estimate ignored drag and the launch height, so
+      // the same fraction taps at a different place on every arc; a radius is
+      // exact and is what the tuning sweep used.
+      const trip = g.orbitR * (T.dive === 'split' ? 0.60 : T.dive === 'burst' ? 0.34 : 0.20);
+      for (let i = 0; i < 500 && g.state === S.FLIGHT; i++) {
+        g._tick();
+        const t = g.knight && g.knight.body.translation();
+        if (!t || Math.hypot(t.x, t.z) < trip) break;
+      }
+      g.dive();
+    }
     g.settleOut(14);
-    log.push(`${target.post} e${aim.elevDeg.toFixed(0)} p${aim.power} -> +${g.soldiersDown - before}`);
+    log.push(`${target.post}/${plan.why}/${T ? T.id : '?'} e${aim.elevDeg.toFixed(0)} p${aim.power} -> +${g.soldiersDown - before}`);
   }
   const r = { won: g.won, down: g.soldiersDown, total: g.soldiersTotal,
     knightsLeft: g.knights, broken: g.broken, score: g.score, unreachable, log };
   g.phys.dispose();
   return r;
+}
+
+// Search the whole power range for a solution to an arbitrary point, the way
+// solveSoldier does for a body. A coarse list misses shots that exist.
+function solveAt(g, q, high) {
+  for (let i = 0; i <= 20; i++) {
+    const p = 0.2 + (i / 20) * 0.8;
+    const s = g.solve(q.x, q.y, q.z, p, high);
+    if (s) return s;
+  }
+  return null;
 }
 
 // Can every post be aimed at in the first place? A soldier no shot can reach is

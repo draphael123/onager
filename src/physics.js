@@ -8,6 +8,7 @@
 //      never ends, because 3D rubble jitters forever.
 
 import * as RAPIER from '../vendor/rapier.es.js';
+import { foe } from './foes.js';
 import { rnd } from './rand.js';
 import { activeQuality } from './settings.js';
 
@@ -60,6 +61,7 @@ export class Physics {
     this.list = [];           // every live part, in creation order
     this.debris = [];
     this.ragdolls = [];      // groups of jointed parts, oldest culled first
+    this.bursts = [];        // sapper detonations, drained by the renderer
     this.time = 0;
 
     // Filled each step, drained by the renderer. Kept as plain data so the
@@ -143,7 +145,7 @@ export class Physics {
     const part = {
       body, col, fixed: false, kind: opts.kind || 'knight', mat: 'knight',
       hp: 1e9, maxHp: 1e9, half: { x: r, y: r, z: r },
-      spawnX: x, spawnY: y, spawnZ: z,
+      spawnX: x, spawnY: y, spawnZ: z, type: opts.type || null,
       up0: null, dead: false, mesh: null, debris: false, born: this.time,
     };
     this.parts.set(col.handle, part);
@@ -177,7 +179,10 @@ export class Physics {
   // arriving in person or a course of masonry arriving on top of them.
   addSoldier(x, y, z, opts = {}) {
     const m = MAT.soldier;
-    const r = 0.3, hh = 0.42;
+    const F = foe(opts.foe || 'levy');
+    // A bigger man is a bigger target, and the collider has to agree with the
+    // mesh or you get hits that visibly miss.
+    const r = 0.3 * F.scale, hh = 0.42 * F.scale;
     // A CYLINDER's half-height is hh, not hh + r — that is the capsule formula.
     // Using it here spawned every soldier 30cm above their post, so the whole
     // garrison dropped on the first frame and the stability test read 0.43m of
@@ -198,7 +203,8 @@ export class Physics {
     const col = this.world.createCollider(cd, body);
     const part = {
       body, col, fixed: false, kind: 'soldier', mat: 'soldier',
-      hp: m.hp, maxHp: m.hp, half: { x: r, y: hh, z: r },
+      hp: F.hp, maxHp: F.hp, half: { x: r, y: hh, z: r },
+      foe: F.id, armour: F.armour, score: F.score, shore: F.shore || null,
       spawnX: x, spawnY: y + hh, spawnZ: z,
       up0: 1, dead: false, mesh: null, debris: false, born: this.time,
       post: opts.post || '', tilt: 0,
@@ -208,6 +214,30 @@ export class Physics {
     this.soldiers.push(part);
     if (this.onAdd) this.onAdd(part);
     return part;
+  }
+
+  // A Sapper going off: a wide, shallow blast that ruins a group of men and
+  // barely scratches a wall. The knight is consumed by it.
+  burstAt(kn, at) {
+    if (!kn || kn.dead) return;
+    const T = kn.type;
+    const r = (T && T.splashRadius ? T.splashRadius : 3) * 1.15;
+    const power = 240 * (T ? T.splashDamage : 1);
+    this._splash(at, power, r, kn, T ? (T.splashSoft || 0.12) : 1);
+    // Shove everything loose outward, so the blast reads as force and not just
+    // as damage numbers happening quietly.
+    for (const p of this.list) {
+      if (p.fixed || p.dead || p === kn) continue;
+      const t = p.body.translation();
+      const dx = t.x - at.x, dy = t.y - at.y, dz = t.z - at.z;
+      const d = Math.hypot(dx, dy, dz);
+      if (d > r * 1.4 || d < 0.001) continue;
+      // Same rule as the Hook: a speed the blast imparts, scaled by mass.
+      const dv = (1 - d / (r * 1.4)) * 7.5 * (p.body.mass() || 1);
+      p.body.applyImpulse({ x: (dx / d) * dv, y: (dy / d) * dv + dv * 0.4, z: (dz / d) * dv }, true);
+    }
+    this.bursts.push({ x: at.x, y: at.y, z: at.z, r });
+    this.remove(kn);
   }
 
   // A jointed ragdoll: torso, head, two arms, two legs, spherical joints.
@@ -339,27 +369,49 @@ export class Physics {
         mat: (a && a.kind !== 'knight' ? a.mat : (b ? b.mat : 'block')) });
 
       const bite = Math.min(1, (relV - IMPACT_V) / 6);
-      const dmg = mag * DAMAGE_PER_FORCE * bite;
       const kn = (a && a.kind === 'knight') ? a : (b && b.kind === 'knight') ? b : null;
+      const other = kn === a ? b : a;
+      // Every number below comes off the knight's TYPE, so a new kind of
+      // ammunition is a row in knights.js and nothing else.
+      const T = (kn && kn.type) || null;
+      const matMul = T && other && T.matBonus ? (T.matBonus[other.mat] || 1) : 1;
+      const dmg = mag * DAMAGE_PER_FORCE * bite * (T ? T.damage : 1) * matMul;
+
       if (a) this._hurt(a, dmg);
       if (b) this._hurt(b, dmg);
 
-      // Splash. Knight strikes only, once per tick, radius scaled by speed.
+      // Splash. Knight strikes only, once per tick, radius scaled by speed and
+      // by type — the Sapper reaches three metres and the Lance barely one.
       if (kn && relV > SPLASH_V && this._splashTick !== this.time) {
         this._splashTick = this.time;
-        this._splash(at, dmg, 1.2 + relV * 0.045, kn);
+        const r = (1.2 + relV * 0.045) * (T ? T.splashRadius : 1);
+        this._splash(at, dmg * (T ? T.splashDamage : 1), r, kn);
+      }
+
+      // A Sapper is spent where it lands. Deferred out of this callback:
+      // detonating inside the drain removes the very body whose contact event
+      // is being read, and Rapier traps on the next event that names it.
+      if (T && T.burst && kn && !kn.dead && relV > SPLASH_V) {
+        this._pendingBurst = { kn, at: { x: at.x, y: at.y, z: at.z } };
+        return;
       }
 
       // Punch-through. The solver stops the knight dead in the same tick it
       // shatters a block, so without this a knight that destroys a wall still
       // drops out of the hole it just made — or wedges in it. Restoring a
       // fraction of the PRE-impact velocity is what turns a hit into breaking
-      // through.
-      const other = kn === a ? b : a;
-      if (kn && !kn.dead && other && other.dead) {
-        kn.body.setLinvel({ x: kn.pvx * 0.72, y: kn.pvy * 0.72, z: kn.pvz * 0.72 }, true);
+      // through. A Maul keeps almost none of it: it stops where it lands.
+      const keep = T ? T.punchThrough : 0.72;
+      if (keep > 0 && kn && !kn.dead && other && other.dead) {
+        kn.body.setLinvel({ x: kn.pvx * keep, y: kn.pvy * keep, z: kn.pvz * keep }, true);
       }
     });
+
+    if (this._pendingBurst) {
+      const b = this._pendingBurst;
+      this._pendingBurst = null;
+      this.burstAt(b.kn, b.at);
+    }
 
     this._checkBanners();
     this._checkSoldiers();
@@ -367,7 +419,33 @@ export class Physics {
     this._cullDebris();
   }
 
-  _splash(at, dmg, r, skip) {
+  // `soft` scales what the blast does to MASONRY without touching what it does
+  // to men. A Sapper that clears a wall walk of soldiers and also demolishes
+  // the wall is just a better Lance, and then nobody ever loads a Lance.
+  // The Warden shores up what is near him. It is the one garrison trait that
+  // does not defend the man carrying it: it changes the ORDER you attack in,
+  // because breaking his wall before you have dealt with him is wasted work.
+  //
+  // The live warden list is rebuilt only when the garrison changes, not per
+  // block per hit — a naive scan here is O(blocks x wardens) every contact.
+  _shoring(p) {
+    if (!this._wardens || !this._wardens.length) return 1;
+    const t = p.body.translation();
+    let f = 1;
+    for (const w of this._wardens) {
+      if (w.dead) continue;
+      const wt = w.body.translation();
+      const d2 = (t.x - wt.x) ** 2 + (t.y - wt.y) ** 2 + (t.z - wt.z) ** 2;
+      if (d2 < w.shore.radius * w.shore.radius) f = Math.min(f, w.shore.factor);
+    }
+    return f;
+  }
+
+  refreshWardens() {
+    this._wardens = this.soldiers.filter(s => s.shore && !s.dead);
+  }
+
+  _splash(at, dmg, r, skip, soft = 1) {
     const r2 = r * r;
     for (let i = this.list.length - 1; i >= 0; i--) {
       const p = this.list[i];
@@ -376,7 +454,8 @@ export class Physics {
       const dx = t.x - at.x, dy = t.y - at.y, dz = t.z - at.z;
       const d2 = dx * dx + dy * dy + dz * dz;
       if (d2 > r2) continue;
-      this._hurt(p, dmg * 0.8 * (1 - Math.sqrt(d2) / r));
+      const scale = p.kind === 'soldier' ? 1 : soft;
+      this._hurt(p, dmg * 0.8 * scale * (1 - Math.sqrt(d2) / r));
     }
   }
 
@@ -393,11 +472,14 @@ export class Physics {
       return;
     }
     if (p.kind === 'soldier') {
-      p.hp -= dmg;
+      // Armour is a multiplier on a STRIKE only. Being crushed is handled in
+      // _checkSoldiers, and no amount of plate helps a man under a wall — which
+      // is the whole reason the Serjeant exists.
+      p.hp -= dmg * (p.armour || 1);
       if (p.hp <= 0) this._soldierDown(p, 'struck');
       return;
     }
-    p.hp -= dmg;
+    p.hp -= dmg * this._shoring(p);
     if (p.hp <= 0) this._break(p);
   }
 
@@ -491,6 +573,10 @@ export class Physics {
     const t = p.body.translation(), v = p.body.linvel();
     if (this.onSoldierDown) this.onSoldierDown(p, how, t, v);
     this.remove(p);
+    // A dead Warden stops shoring, and every wall he was holding up becomes
+    // breakable in the same instant. Rebuilding the list here is what makes
+    // that the player's decision rather than a shared cache going stale.
+    if (p.shore) this.refreshWardens();
     const i = this.soldiers.indexOf(p);
     if (i >= 0) this.soldiers.splice(i, 1);
   }

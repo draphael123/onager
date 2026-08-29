@@ -4,6 +4,8 @@ import * as THREE from '../vendor/three.module.js';
 import { activeQuality, SET } from './settings.js';
 import { THEMES } from './levels.js';
 import { MODELS, spawnCharacter, MODEL_HEIGHT } from './models.js';
+import { TYPES } from './knights.js';
+import { foe } from './foes.js';
 
 const UNIT = new THREE.BoxGeometry(1, 1, 1);
 
@@ -388,8 +390,9 @@ export class Renderer {
     // Somewhere on the field, and crucially OUTSIDE the camera's own ring. The
     // camera sits about 8m beyond the road, so anything spawned from orbitR+3
     // outward could land between it and the castle or directly on top of it —
-    // a conifer filling a quarter of the frame. Big scenery starts at +16.
-    const spot = (min = this.orbitR + 16, max = this.orbitR + 130) => {
+    // a conifer filling a quarter of the frame. Big scenery starts at +19,
+    // which also clears the Wide view's position.
+    const spot = (min = this.orbitR + 19, max = this.orbitR + 130) => {
       const a = R() * Math.PI * 2;
       const r = min + Math.pow(R(), 0.62) * (max - min);
       return [Math.cos(a) * r, Math.sin(a) * r];
@@ -854,6 +857,24 @@ export class Renderer {
     this.syncPart(p);
   }
 
+  // The Warden's protection, drawn where it actually applies. Flat on the
+  // ground, additive, and slowly turning so it never reads as scenery.
+  _shoreRing(F) {
+    const r = F.shore.radius;
+    const g = new THREE.Mesh(
+      new THREE.RingGeometry(r - 0.28, r, 60),
+      new THREE.MeshBasicMaterial({
+        color: 0x8f74d8, transparent: true, opacity: 0.3, side: THREE.DoubleSide,
+        depthWrite: false, blending: THREE.AdditiveBlending,
+      }));
+    g.rotation.x = -Math.PI / 2;
+    g.position.y = -0.38;
+    g.userData.spin = true;
+    if (!this._shoreRings) this._shoreRings = [];
+    this._shoreRings.push(g);
+    return g;
+  }
+
   _bannerMesh(p) {
     const g = new THREE.Group();
     const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.09, 0.11, p.half.y * 2, 7),
@@ -881,16 +902,23 @@ export class Renderer {
   // hot red against tan masonry and green field. The player's knight is blue —
   // you should never have to work out which figure is yours.
   _soldierMesh(p) {
-    // The garrison gets the KayKit barbarian, tinted hot red so they still read
-    // as targets from thirty metres — readability first, likeness second.
+    // Every garrison type is a different mesh in a different colour. They all
+    // stay in the warm half of the wheel so the garrison still reads as ONE
+    // side from thirty metres — readability of the faction first, of the type
+    // second, likeness third.
+    const F = foe(p.foe);
     if (MODELS.ready) {
       const g = new THREE.Group();
-      const m = spawnCharacter('foe', { bodyTint: 0xff7a5e });
+      const m = spawnCharacter(F.model, { bodyTint: F.tint });
       m.scale.setScalar((p.half.y * 2) / MODEL_HEIGHT);
       m.position.y = -p.half.y;         // the mesh stands on its origin
       g.add(m);
+      // The Warden's shoring has to be VISIBLE or the player cannot know why
+      // the wall is not breaking. A ring on the ground at his exact radius says
+      // it without a word of UI.
+      if (F.shore) g.add(this._shoreRing(F));
       const mixer = new THREE.AnimationMixer(m);
-      const clip = MODELS.clips[Math.random() < 0.5 ? 'Idle_A' : 'Idle_B'];
+      const clip = MODELS.clips[F.idle] || MODELS.clips[Math.random() < 0.5 ? 'Idle_A' : 'Idle_B'];
       if (clip) {
         const a = mixer.clipAction(clip);
         a.play();
@@ -905,7 +933,7 @@ export class Renderer {
       return;
     }
     const g = new THREE.Group();
-    const cloth = new THREE.MeshStandardMaterial({ color: 0xc4402f, roughness: 0.86 });
+    const cloth = new THREE.MeshStandardMaterial({ color: F.tint, roughness: 0.86 });
     const steel = new THREE.MeshStandardMaterial({ color: 0x9aa3ad, roughness: 0.38, metalness: 0.8 });
     const dark = new THREE.MeshStandardMaterial({ color: 0x3a3330, roughness: 0.72 });
     const wood = new THREE.MeshStandardMaterial({ color: 0x6a4b2e, roughness: 0.9 });
@@ -1064,12 +1092,19 @@ export class Renderer {
   // Both versions put the rig's ORIGIN at mid-body with the feet 0.61 below,
   // because that is the convention everything that positions a knight already
   // assumes. The bought mesh has its origin at the feet, so it is offset.
-  knightRig(pal) {
+  knightRig(pal, T) {
     const P = pal || KNIGHT_PALETTES[0];
+    T = T || TYPES.lance;
     if (MODELS.ready) {
       const g = new THREE.Group();
-      const m = spawnCharacter('knight', { capeTint: P.cloth });
-      const sc = KNIGHT_H / MODEL_HEIGHT;
+      // A type is a different MAN, not a differently-coloured one: the Maul is
+      // a barbarian, the light types are rogues. You have to be able to tell
+      // what is on the arm at a glance, and from behind.
+      const m = spawnCharacter(T.model || 'knight',
+        T.tint ? { bodyTint: T.tint } : { capeTint: P.cloth });
+      // Heavier men are bigger men. It is the cheapest possible read on what a
+      // shot is going to do, and it costs nothing to be right about.
+      const sc = (KNIGHT_H / MODEL_HEIGHT) * (T.scale || 1);
       m.scale.setScalar(sc);
       m.position.y = -0.61;
       m.rotation.y = Math.PI / 2;        // the mesh faces +Z; the rig faces +X
@@ -1082,10 +1117,23 @@ export class Renderer {
         action.play();
         action.time = Math.random() * clip.duration;   // not a drill squad
       }
-      g.userData = { model: m, mixer, action, pal: P, phase: Math.random() * 7 };
+      g.userData = { model: m, mixer, action, pal: P, type: T, phase: Math.random() * 7 };
       return g;
     }
-    return this._proceduralKnight(P);
+    const g = this._proceduralKnight(P);
+    // The fallback rig has no second mesh to swap in, so the type reads
+    // through size and colour instead of silhouette.
+    if (T.tint) {
+      g.traverse(o => {
+        if (o.isMesh && o.material && o.material.color) {
+          o.material = o.material.clone();
+          o.material.color.lerp(new THREE.Color(T.tint), 0.55);
+        }
+      });
+    }
+    g.scale.multiplyScalar(T.scale || 1);
+    g.userData.type = T;
+    return g;
   }
 
   _proceduralKnight(pal) {
@@ -1150,10 +1198,78 @@ export class Renderer {
     return g;
   }
 
-  knightMesh(pal) {
-    const g = this.knightRig(pal);
+  knightMesh(pal, T) {
+    const g = this.knightRig(pal, T);
     this.scene.add(g);
     return g;
+  }
+
+  // The Brothers split into three, and the two new men need bodies. They are
+  // transient — they live for one shot and are cleared with it.
+  addExtraKnight(part, pal, T) {
+    const g = this.knightRig(pal, T);
+    this.scene.add(g);
+    if (!this._extras) this._extras = [];
+    this._extras.push({ part, mesh: g });
+    return g;
+  }
+
+  clearExtraKnights() {
+    for (const e of this._extras || []) {
+      this.scene.remove(e.mesh);
+      e.mesh.traverse(o => { if (o.isMesh && o.geometry) o.geometry.dispose(); });
+    }
+    this._extras = [];
+  }
+
+  syncExtraKnights(dt) {
+    for (const e of this._extras || []) {
+      if (!e.part || e.part.dead) { e.mesh.visible = false; continue; }
+      const t = e.part.body.translation();
+      e.mesh.position.set(t.x, t.y, t.z);
+      const v = e.part.body.linvel();
+      this.poseFlying(e.mesh, v, dt);
+    }
+  }
+
+  // A Sapper going off. It has to look like the reason a whole rank of men is
+  // suddenly on the floor, so it is bright, wide, and gone in half a second.
+  burst(x, y, z, r) {
+    const R = r || 3.4;
+    this.spark(x, y, z, 1.0, 34);
+    this.kick(0.5);
+    const geo = new THREE.SphereGeometry(1, 16, 10);
+    const mat = new THREE.MeshBasicMaterial({
+      color: 0xffc464, transparent: true, opacity: 0.85,
+      depthWrite: false, blending: THREE.AdditiveBlending,
+    });
+    const m = new THREE.Mesh(geo, mat);
+    m.position.set(x, y, z);
+    m.scale.setScalar(0.6);
+    this.scene.add(m);
+    if (!this._bursts) this._bursts = [];
+    this._bursts.push({ mesh: m, t: 0, r: R });
+  }
+
+  _stepTypeFx(dt) {
+    for (const r of this._shoreRings || []) {
+      if (!r.parent) continue;
+      r.rotation.z += dt * 0.35;
+      r.material.opacity = 0.22 + Math.sin((this._ringT = (this._ringT || 0) + dt * 0.9)) * 0.09;
+    }
+    for (let i = (this._bursts || []).length - 1; i >= 0; i--) {
+      const b = this._bursts[i];
+      b.t += dt;
+      const u = b.t / 0.42;
+      if (u >= 1) {
+        this.scene.remove(b.mesh);
+        b.mesh.geometry.dispose(); b.mesh.material.dispose();
+        this._bursts.splice(i, 1);
+        continue;
+      }
+      b.mesh.scale.setScalar(0.6 + u * b.r);
+      b.mesh.material.opacity = 0.85 * (1 - u) * (1 - u);
+    }
   }
 
   // Idle for the row waiting their turn: breathing, a slow shift of weight, a
@@ -1686,7 +1802,7 @@ export class Renderer {
   // The company, in the colours they will fly in. Built per level because the
   // knight count changes, and because the man at the front of the queue is the
   // one you are about to throw — he should be wearing what lands.
-  buildWaiting(pals) {
+  buildWaiting(pals, loadout) {
     if (!this.campGroup) return;
     for (const k of this.waiting || []) {
       this.campGroup.remove(k);
@@ -1694,7 +1810,7 @@ export class Renderer {
     }
     this.waiting = [];
     for (let i = 0; i < pals.length; i++) {
-      const k = this.knightRig(pals[i]);
+      const k = this.knightRig(pals[i], TYPES[(loadout && loadout[i]) || 'lance']);
       // Two ranks, the front one nearest the machine.
       const col = i % 4, row = (i / 4) | 0;
       const x = -2.5 - row * 1.25, z = -1.9 + col * 1.06 + row * 0.26;

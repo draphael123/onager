@@ -464,3 +464,103 @@ worse than one that looks plainer.
 
 One fortress. No progression or level select, no music, no knight variety beyond
 the lance dive.
+
+---
+
+## Round nine — four kinds of man, five kinds of defender
+
+### The ammunition is the puzzle
+
+One projectile meant the only decisions were where to stand and how to aim.
+Four types mean a face that was wrong for the last man is right for this one,
+which is what finally makes the orbit and the material system bite.
+
+Every type had to answer three questions or lose its slot: what is it FOR, what
+is it BAD at, and what does its second tap do. All four numbers below came out
+of a twenty-aim grid on Blackmere, not out of a feeling:
+
+| | avg kills | avg blocks | its job |
+|---|---|---|---|
+| Lance | 0.95 | 2.65 | the all-rounder |
+| Maul | 1.45 | **8.10** | masonry, 3x the Lance |
+| Sapper | **1.85** | 1.75 | men, and only men |
+| Brothers | 0.70 → **1.20** split | 1.10 | coverage, if you split them |
+
+Nobody dominates: the Maul leads on breaking, the Sapper on killing, the
+Brothers only with the second tap. That is asserted in T14f.
+
+### The Hook was cut
+
+A fifth type grabbed a block and hauled it toward the machine instead of
+breaking it — undercutting a pier rather than smashing one. It read beautifully
+and it did not survive measurement. Over a two-shot grid on three faces:
+
+| face | lance→lance | hook→lance |
+|---|---|---|
+| north | 3 down / 13 broke | 3 / 11 |
+| east | 2 / 13 | 2 / 7 |
+| south | 4 / 12 | 3 / 7 |
+
+Worse than a plain Lance as an opener on every face. It was tuned twice. A type
+that is never the right answer is a slot the player learns to ignore.
+
+### Three bugs the measurement found
+
+**A knight that deletes itself mid-step.** The Sapper is consumed by its own
+burst, and everything downstream still held a reference to the body Rapier had
+just freed. Reading a freed Rapier body is not an exception you can catch — it
+traps the whole wasm module. The reference is now dropped once, in `_tick`,
+before anything else can touch it.
+
+**An impulse is not a speed.** The Hook's tug and the Sapper's blast were fixed
+impulses. Castle pieces run from a 4kg keep stone to a 60-gramme rail cap, so
+one figure that firmly tugs the big one launched the small one at **8.5 km/s** —
+which is how a single Hook shot came to clear a nine-man garrison and break 352
+blocks. Both are delta-v scaled by mass now, and T14g asserts nothing on the
+field ever exceeds 120 m/s.
+
+**A grid too small to see the thing it was testing.** T14e claimed the Brothers
+were much better split. On six aims it read 5 against 7 and failed; on the
+twenty aims the type was actually tuned on it reads 8 against 19. The subset was
+sampling the aims where a single Brother happens to land on someone.
+
+### The bot had to learn the game
+
+With a mixed loadout the old bot fired whatever was next in the rack and aimed
+every shot straight at a body. Against an armoured Serjeant taking 30% damage it
+failed and reported Blackmere unwinnable — 0/5. It now:
+
+* takes **Wardens first**, because everything else near one is half-price work
+* aims at the **support under** an armoured man rather than at the man
+* aims at a **cluster centroid** when two or more stand together
+* **picks the type** to match, and taps the second tap on distance-to-castle
+  rather than a fraction of an estimated flight time
+
+Same castle, same loadout: 0/5 → 1/5 with an average of 7.7 of 9. A sim cannot
+measure a strategy the bot cannot play.
+
+### The garrison answers the ammunition
+
+Five defender types, each designed against one of the four verbs rather than for
+variety. The **Serjeant** takes 70% off a direct strike and nothing off being
+crushed. The **Rabble** stand three to a post. The **Watch** stand three well
+apart. The **Warden** shores masonry within eight metres by 45% and does not
+defend himself at all — he is the only one who changes the ORDER you do things
+in rather than the shot you use, and his ring is drawn on the ground because a
+wall that will not break for no visible reason is a bug, not a puzzle.
+
+### Two more castles, and a suite that was quietly lying
+
+`SIM_LEVEL` defaulted to `LEVELS.length - 1`. Adding Stonefall and Vantwick
+silently retargeted every assertion in the suite at a different building, and
+nine of them failed for that reason alone. The suite is now pinned to Blackmere
+and T15 sweeps all five castles for the properties that must hold everywhere:
+no interpenetration at spawn, nothing floating, stands up on its own, the
+garrison does not knock itself over, every post has a firing solution, and the
+bot takes at least 60% of the men.
+
+Both new castles failed that audit on their first build — a stone roof whose end
+slabs were cantilevered past their own centre of mass, lintels overlapping their
+neighbours by 87cm, a picket standing 22cm above the roof it was meant to be on,
+and a flanking wall biting 30cm into a gate pier because a running bond's end
+cells reach past `len/2`. All invisible in a screenshot and all fatal in play.
