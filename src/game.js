@@ -5,12 +5,21 @@
 
 import * as THREE from '../vendor/three.module.js';
 import { Physics } from './physics.js';
-import { build, faceAt, FACES } from './fortress.js';
+import { faceAt } from './fortress.js';
+import { LEVELS, THEMES } from './levels.js';
 import { SET } from './settings.js';
 
-export const ORBIT_R = 38;
+// Orbit radius is per LEVEL now: a small keep sat at 38 reads as a model on a
+// table and every shot becomes a long blind lob.
+export const ORBIT_R = 38;               // level 3's radius, kept for reference
 export const LAUNCH_H = 3.2;
+// Reference speeds, for the reference orbit radius of 38. Each level scales
+// them by sqrt(orbitR / 38), because range goes with the SQUARE of speed: at
+// the big castle's speeds a small level cannot reach anything close in, and the
+// sentry standing in the open on level one — the easiest target in the game —
+// had no firing solution at all between the 6 and 66 degree limits.
 export const SPEED_MIN = 22, SPEED_MAX = 46;
+export const SPEED_REF_R = 38;
 export const ELEV_MIN = 6 * Math.PI / 180, ELEV_MAX = 66 * Math.PI / 180;
 const CENTRE = new THREE.Vector3(0, 6, 0);
 const KNIGHT_R = 0.56;
@@ -22,7 +31,13 @@ export class Game {
   constructor(renderer, sfx, opts = {}) {
     this.rd = renderer || null;
     this.sfx = sfx || null;
-    this.knightsTotal = opts.knights || SET.knights || 9;
+    this.levelIdx = Math.max(0, Math.min(LEVELS.length - 1, opts.level || 0));
+    this.knightOverride = opts.knights || 0;
+    this.reset();
+  }
+
+  setLevel(i) {
+    this.levelIdx = Math.max(0, Math.min(LEVELS.length - 1, i));
     this.reset();
   }
 
@@ -35,8 +50,16 @@ export class Game {
       if (this.knightMesh) { this.rd.scene.remove(this.knightMesh); this.knightMesh = null; }
       this.rd.hideArc();
     }
+    const L = LEVELS[this.levelIdx];
+    this.level = L;
+    this.faces = L.faces;
+    this.orbitR = L.orbitR;
+    const k = Math.sqrt(this.orbitR / SPEED_REF_R);
+    this.speedMin = SPEED_MIN * k;
+    this.speedMax = SPEED_MAX * k;
+    this.knightsTotal = this.knightOverride || L.knights;
     this.phys = new Physics();
-    const b = build(this.phys);
+    const b = L.build(this.phys);
     this.banners = b.banners;
     this.bannersDown = 0;
     this.soldiers = b.soldiers;
@@ -64,6 +87,8 @@ export class Game {
     this.msg = '';
 
     if (this.rd) {
+      this.rd.orbitR = this.orbitR;
+      this.rd.buildEnvironment(THEMES[L.theme]);
       for (const p of this.phys.list) this.rd.addPart(p);
       // Hook AFTER the initial build, so these only fire during play.
       this.phys.onAdd = (p) => this.rd.addPart(p);
@@ -76,7 +101,8 @@ export class Game {
   // ---- geometry -----------------------------------------------------------
 
   launchPos() {
-    return new THREE.Vector3(Math.sin(this.angle) * ORBIT_R, 0, -Math.cos(this.angle) * ORBIT_R);
+    const R = this.orbitR;
+    return new THREE.Vector3(Math.sin(this.angle) * R, 0, -Math.cos(this.angle) * R);
   }
 
   forward() {
@@ -89,13 +115,13 @@ export class Game {
 
   velocity() {
     const f = this.forward();
-    const speed = SPEED_MIN + (SPEED_MAX - SPEED_MIN) * this.power;
+    const speed = this.speedMin + (this.speedMax - this.speedMin) * this.power;
     return new THREE.Vector3(
       f.x * Math.cos(this.elev), Math.sin(this.elev), f.z * Math.cos(this.elev)
     ).multiplyScalar(speed);
   }
 
-  face() { return faceAt(this.angle); }
+  face() { return faceAt(this.angle, this.faces); }
 
   // ---- aiming -------------------------------------------------------------
 
@@ -322,20 +348,26 @@ export class Game {
   // Over-the-shoulder, offset to one side: the machine sits in the bottom of
   // frame and the arc reads across the picture instead of straight up the
   // middle. Same framing logic as the 2D original's slingshot in the corner.
+  // Over-the-shoulder, offset to one side: the machine sits in the bottom of
+  // frame and the arc reads across the picture instead of straight up the
+  // middle. Pull-back scales with the castle so a small keep still fills it.
   _aimCam() {
     const L = this.launchPos(), f = this.forward();
     const r = new THREE.Vector3(-f.z, 0, f.x);
+    const back = 6 + this.orbitR * 0.105;
+    const look = 4.2 + this.orbitR * 0.078;
     return {
-      pos: new THREE.Vector3(L.x - f.x * 10 + r.x * 3.2, 7.6, L.z - f.z * 10 + r.z * 3.2),
-      look: CENTRE.clone().setY(7.2),
+      pos: new THREE.Vector3(L.x - f.x * back + r.x * 3.2, 3.4 + this.orbitR * 0.11,
+        L.z - f.z * back + r.z * 3.2),
+      look: CENTRE.clone().setY(look),
     };
   }
 
   _surveyCam() {
     const L = this.launchPos(), f = this.forward();
     return {
-      pos: new THREE.Vector3(L.x - f.x * 6, 16, L.z - f.z * 6),
-      look: CENTRE.clone().setY(6),
+      pos: new THREE.Vector3(L.x - f.x * 6, 8 + this.orbitR * 0.21, L.z - f.z * 6),
+      look: CENTRE.clone().setY(3.6 + this.orbitR * 0.064),
     };
   }
 
@@ -372,10 +404,12 @@ export class Game {
     if (!this.rd) return;
     const a = t * 0.085;
     const cam = this.rd.camera;
-    const r = 52 + Math.sin(t * 0.21) * 5;
-    cam.position.set(Math.sin(a) * r, 16 + Math.sin(t * 0.13) * 3.5, -Math.cos(a) * r);
-    if (!this._look) this._look = CENTRE.clone().setY(7);
-    this._look.lerp(CENTRE.clone().setY(7), 1 - Math.pow(0.02, dt));
+    const r = this.orbitR * 1.36 + Math.sin(t * 0.21) * 5;
+    cam.position.set(Math.sin(a) * r, 8 + this.orbitR * 0.22 + Math.sin(t * 0.13) * 3.5,
+      -Math.cos(a) * r);
+    const look = CENTRE.clone().setY(3.4 + this.orbitR * 0.08);
+    if (!this._look) this._look = look.clone();
+    this._look.lerp(look, 1 - Math.pow(0.02, dt));
     cam.lookAt(this._look);
     this.rd.setSunFrom(a);
     this.rd.syncAll(this.phys);
@@ -439,8 +473,8 @@ export class Game {
     const R = Math.hypot(tx, tz);
     if (R < 0.4) return null;                     // dead centre has no bearing
     const angle = Math.atan2(tx, -tz);
-    const speed = SPEED_MIN + (SPEED_MAX - SPEED_MIN) * clamp(power, 0, 1);
-    const d = ORBIT_R - R - 0.9;                  // muzzle sits 0.9 in from the ring
+    const speed = this.speedMin + (this.speedMax - this.speedMin) * clamp(power, 0, 1);
+    const d = this.orbitR - R - 0.9;                  // muzzle sits 0.9 in from the ring
     if (d <= 1) return null;
     const g = -this.phys.world.gravity.y;
     const dy = ty - LAUNCH_H;
@@ -453,10 +487,13 @@ export class Game {
     return { angle, elev, elevDeg: elev * 180 / Math.PI, power };
   }
 
-  // Aim at a live soldier, trying powers until one is in range.
+  // Aim at a live soldier, searching the whole power range. A coarse list of
+  // six powers missed shots that exist — the level looked unwinnable when it
+  // was the search that was too thin.
   solveSoldier(sol, high = false) {
     const t = sol.body.translation();
-    for (const p of [0.85, 1.0, 0.7, 0.95, 0.6, 0.55]) {
+    for (let i = 0; i <= 20; i++) {
+      const p = 0.2 + (i / 20) * 0.8;
       const s = this.solve(t.x, t.y, t.z, p, high);
       if (s) return s;
     }
@@ -495,4 +532,4 @@ export class Game {
 }
 
 function clamp(v, a, b) { return v < a ? a : v > b ? b : v; }
-export { FACES, clamp };
+export { clamp };

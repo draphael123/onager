@@ -102,10 +102,8 @@
   @keyframes fade{from{opacity:0}to{opacity:1}}
   #cardTitle{font-size:clamp(30px,7vw,58px);letter-spacing:.24em;color:#e0b25c;text-indent:.24em}
   #cardSub{font-size:13px;letter-spacing:.14em;color:#8b83a0;line-height:2}
-  #cardBtn{pointer-events:auto;margin-top:8px;background:none;border:1px solid #e0b25c;color:#e0b25c;
-    font:inherit;font-size:12px;letter-spacing:.24em;text-transform:uppercase;padding:12px 30px;
-    cursor:pointer;transition:background .2s,color .2s}
-  #cardBtn:hover{background:#e0b25c;color:#1b1a24}
+  #cardBtns{display:flex;gap:10px;flex-wrap:wrap;justify-content:center;margin-top:10px;
+    pointer-events:auto}
 
   #keys{position:fixed;right:20px;bottom:20px;z-index:19;font-size:11px;letter-spacing:.06em;
     color:#8b8399;text-align:right;line-height:1.9;pointer-events:none;
@@ -115,18 +113,35 @@
   /* ---------- title ---------- */
   #title{position:fixed;inset:0;z-index:60;display:flex;flex-direction:column;
     align-items:center;justify-content:space-between;text-align:center;
-    padding:clamp(28px,9vh,80px) 24px clamp(34px,10vh,90px);
+    padding:clamp(20px,5vh,60px) 24px clamp(24px,6vh,70px);
     background:radial-gradient(ellipse at 50% 52%,rgba(14,13,20,0) 22%,rgba(14,13,20,.5) 62%,rgba(14,13,20,.86) 100%);
     transition:opacity .55s ease}
   #title.gone{opacity:0;pointer-events:none}
-  #title h1{font-size:clamp(46px,12vw,116px);letter-spacing:.34em;font-weight:400;
+  #title h1{font-size:clamp(38px,10vw,104px);letter-spacing:.34em;font-weight:400;
     color:#f0d9a8;text-indent:.34em;text-shadow:0 6px 34px rgba(0,0,0,.7);line-height:1}
   #title .tag{margin-top:14px;font-size:clamp(12px,2.2vw,15px);letter-spacing:.2em;
     color:#cbbfa6;text-shadow:0 2px 12px rgba(0,0,0,.8)}
   #title .rule{width:min(320px,60vw);height:1px;background:linear-gradient(90deg,
     transparent,rgba(224,178,92,.65),transparent);margin:18px auto 0}
   #titleTop{display:flex;flex-direction:column;align-items:center}
+  #titleBottom{display:flex;flex-direction:column;align-items:center;gap:20px;width:100%}
   #titleBtns{display:flex;gap:12px;flex-wrap:wrap;justify-content:center}
+
+  /* ---------- level picker ---------- */
+  #levels{display:flex;flex-direction:column;gap:7px;width:min(430px,92vw);pointer-events:auto}
+  .lvl{display:flex;align-items:center;gap:14px;width:100%;text-align:left;cursor:pointer;
+    background:rgba(14,13,20,.5);border:1px solid rgba(224,178,92,.28);
+    color:#e9e2d2;font:inherit;padding:11px 15px;backdrop-filter:blur(3px);
+    transition:background .16s,border-color .16s,transform .16s}
+  .lvl:hover{background:rgba(224,178,92,.16);border-color:rgba(224,178,92,.7);transform:translateX(2px)}
+  .lvl.locked{opacity:.42;cursor:default;border-color:rgba(233,226,210,.14)}
+  .lvl.locked:hover{background:rgba(14,13,20,.5);border-color:rgba(233,226,210,.14);transform:none}
+  .lvl .n{flex:none;width:24px;font-size:19px;color:#e0b25c;text-align:center;
+    font-variant-numeric:tabular-nums}
+  .lvl .t{flex:1;font-size:14px;letter-spacing:.06em;line-height:1.35}
+  .lvl .t em{display:block;font-style:normal;font-size:11px;color:#8b83a0;letter-spacing:.04em;
+    margin-top:2px}
+  .lvl .s{flex:none;font-size:12px;color:#8b83a0;font-variant-numeric:tabular-nums}
   .tbtn{pointer-events:auto;background:rgba(14,13,20,.45);border:1px solid rgba(224,178,92,.65);
     color:#e0b25c;font:inherit;font-size:13px;letter-spacing:.24em;text-transform:uppercase;
     padding:14px 34px;cursor:pointer;transition:background .18s,color .18s,transform .18s;
@@ -276,7 +291,7 @@
 <div id="card">
   <div id="cardTitle">CLEARED</div>
   <div id="cardSub"></div>
-  <button id="cardBtn">Again</button>
+  <div id="cardBtns"></div>
 </div>
 
 <div id="touch">
@@ -293,10 +308,13 @@
     <div class="tag">Pick your face, then throw a knight at it</div>
     <div class="rule"></div>
   </div>
-  <div id="titleBtns">
-    <button class="tbtn" id="btnPlay">Begin the siege</button>
-    <button class="tbtn ghost" id="btnHow">How to play</button>
-    <button class="tbtn ghost" id="btnSet">Settings</button>
+  <div id="titleBottom">
+    <div id="levels"></div>
+    <div id="titleBtns">
+      <button class="tbtn" id="btnPlay">Begin the siege</button>
+      <button class="tbtn ghost" id="btnHow">How to play</button>
+      <button class="tbtn ghost" id="btnSet">Settings</button>
+    </div>
   </div>
 </div>
 

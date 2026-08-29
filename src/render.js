@@ -2,6 +2,7 @@
 
 import * as THREE from '../vendor/three.module.js';
 import { activeQuality, SET } from './settings.js';
+import { THEMES } from './levels.js';
 
 const UNIT = new THREE.BoxGeometry(1, 1, 1);
 
@@ -29,11 +30,9 @@ export class Renderer {
     this.camera.position.set(0, 22, 52);
 
     this._lights();
-    this._env();
-    this._sky();
-    this._terrain();
+    this.orbitR = 38;                 // replaced per level by buildEnvironment
 
-    this.mats = this._materials();
+    this.mats = null;                 // built per level, once the theme is known
     this.meshes = new Map();       // part -> mesh
     this.shake = 0;
     this.shakeV = new THREE.Vector3();
@@ -75,14 +74,19 @@ export class Renderer {
   }
 
   // ---- world dressing -----------------------------------------------------
+  //
+  // Everything environmental lives in envGroup and is rebuilt per level from a
+  // theme. Three castles of the same grey blocks on the same green field is the
+  // definition of drab; the cheapest way to make a small keep feel like a
+  // different place is to change the weather and what grows around it.
 
   _lights() {
-    const hemi = new THREE.HemisphereLight(0xa9c6ea, GROUND, 0.74);
-    this.scene.add(hemi);
+    this.hemi = new THREE.HemisphereLight(0xa9c6ea, 0x77874f, 0.78);
+    this.scene.add(this.hemi);
 
-    const sun = new THREE.DirectionalLight(SUN, 3.9);
+    const sun = new THREE.DirectionalLight(0xfff0cf, 3.9);
     sun.position.set(-46, 58, 40);
-    sun.castShadow = true;
+    sun.castShadow = SET.shadows;
     sun.shadow.mapSize.set(this.q.shadowMap, this.q.shadowMap);
     sun.shadow.radius = 2.2;
     const c = sun.shadow.camera;
@@ -101,54 +105,81 @@ export class Renderer {
   }
 
   // The player orbits 360 degrees, so any FIXED sun spends a quarter of the
-  // circle backlighting the exact face they are aiming at — the fortress goes
-  // flat and grey at the moment it matters most. The key light rides the orbit
-  // instead, raking across the attacked face from over the player's shoulder.
-  // A gameplay light, not a physical one, and the right call here.
+  // circle backlighting the exact face they are aiming at. The key light rides
+  // the orbit instead. Offset from the attack line, but not by much: 1.35rad
+  // put the whole attacked face in shadow and the castle rendered near black
+  // while the field around it was lit.
   setSunFrom(angle) {
-    // Offset from the attack line, but not by much. Near-frontal light flattens
-    // the fortress into one tan mass; 1.35rad (77 degrees) went too far the
-    // other way and put the entire face you are aiming at in shadow, so the
-    // castle rendered near black while the field around it was lit. 0.9rad
-    // gives form shadows and keeps the attacked face readable.
-    const a = angle + 0.9;
+    const th = this.theme || {};
+    const a = angle + (th.rake || 0.9);
     const d = 86;
-    this.sun.position.set(Math.sin(a) * d, 58, -Math.cos(a) * d);
+    this.sun.position.set(Math.sin(a) * d, th.sunHeight || 58, -Math.cos(a) * d);
     this.sun.target.position.set(0, 4, 0);
     this.sun.target.updateMatrixWorld();
     this.fill.position.set(-Math.sin(a) * 60, 30, Math.cos(a) * 60);
   }
 
-  // Metals (helm, lance, the onager's ironwork) render near black with no
+  // Metals (helm, lance, the machine's ironwork) render near black with no
   // environment. A tiny procedural sky is enough.
-  _env() {
+  _envMap(theme) {
+    if (this._pmremTex) this._pmremTex.dispose();
     const cv = document.createElement('canvas');
     cv.width = 32; cv.height = 128;
     const g = cv.getContext('2d');
     const grd = g.createLinearGradient(0, 0, 0, 128);
-    grd.addColorStop(0, '#5d82c4');
-    grd.addColorStop(0.48, '#cbd7ea');
-    grd.addColorStop(0.53, '#b0a184');
-    grd.addColorStop(1, '#4e5637');
+    for (const [t, col] of theme.sky) grd.addColorStop(t, col);
     g.fillStyle = grd; g.fillRect(0, 0, 32, 128);
     const tex = new THREE.CanvasTexture(cv);
-    tex.colorSpace = THREE.SRGBColorSpace;             // unflagged = washed out
+    tex.colorSpace = THREE.SRGBColorSpace;             // unflagged renders washed
     tex.mapping = THREE.EquirectangularReflectionMapping;
     const pm = new THREE.PMREMGenerator(this.renderer);
-    this.scene.environment = pm.fromEquirectangular(tex).texture;
+    this._pmremTex = pm.fromEquirectangular(tex).texture;
+    this.scene.environment = this._pmremTex;
     pm.dispose(); tex.dispose();
   }
 
-  _sky() {
+  _clearEnv() {
+    if (!this.envGroup) { this.envGroup = new THREE.Group(); this.scene.add(this.envGroup); return; }
+    this.envGroup.traverse(o => {
+      if (o.isMesh || o.isSprite) {
+        if (o.geometry) o.geometry.dispose();
+        const m = o.material;
+        if (Array.isArray(m)) m.forEach(x => x.dispose()); else if (m) m.dispose();
+      }
+    });
+    this.envGroup.clear();
+  }
+
+  buildEnvironment(theme) {
+    this.theme = theme;
+    this._clearEnv();
+    this.scatter = [];
+    this.birds = [];
+
+    this.renderer.toneMappingExposure = theme.exposure;
+    this.scene.fog = new THREE.Fog(theme.fogColour, theme.fogNear, theme.fogFar);
+    this.hemi.color.setHex(theme.hemiSky);
+    this.hemi.groundColor.setHex(theme.hemiGround);
+    this.hemi.intensity = theme.hemiPower;
+    this.sun.color.setHex(theme.sunColour);
+    this.sun.intensity = theme.sunPower;
+    this.fill.intensity = theme.fillPower != null ? theme.fillPower : 0.34;
+    this.fill.color.setHex(theme.hemiSky);
+
+    this.mats = this._materials();    // block colours follow the theme's plinth
+    this._envMap(theme);
+    this._sky(theme);
+    this._terrain(theme);
+    this._scenery(theme);
+    this.setScatterDensity(this.q.scatter);
+  }
+
+  _sky(theme) {
     const cv = document.createElement('canvas');
     cv.width = 8; cv.height = 256;
     const g = cv.getContext('2d');
     const grd = g.createLinearGradient(0, 0, 0, 256);
-    grd.addColorStop(0.00, '#3f6bb0');
-    grd.addColorStop(0.42, '#8fadd6');
-    grd.addColorStop(0.62, '#c9cdd6');
-    grd.addColorStop(0.78, '#e2c9a8');
-    grd.addColorStop(1.00, '#c9a882');
+    for (const [t, col] of theme.sky) grd.addColorStop(t, col);
     g.fillStyle = grd; g.fillRect(0, 0, 8, 256);
     const tex = new THREE.CanvasTexture(cv);
     tex.colorSpace = THREE.SRGBColorSpace;
@@ -156,144 +187,399 @@ export class Renderer {
       new THREE.SphereGeometry(460, 32, 24),
       new THREE.MeshBasicMaterial({ map: tex, side: THREE.BackSide, depthWrite: false, fog: false }));
     dome.renderOrder = -100;
-    this.scene.add(dome);
+    this.envGroup.add(dome);
 
     // A hard disc inside the glow: a bare gradient reads as haze, not a sun.
-    const disc = new THREE.Mesh(new THREE.CircleGeometry(9, 28),
-      new THREE.MeshBasicMaterial({ color: 0xfff6e2, fog: false, transparent: true, opacity: 0.95 }));
-    disc.position.set(-250, 300, 220);
+    const sd = 1 - (theme.sunHeight / 90);
+    const disc = new THREE.Mesh(new THREE.CircleGeometry(9 + sd * 5, 28),
+      new THREE.MeshBasicMaterial({ color: theme.sunColour, fog: false,
+        transparent: true, opacity: 0.95 }));
+    disc.position.set(-250, 140 + theme.sunHeight * 2.6, 220);
     disc.lookAt(0, 0, 0);
     disc.renderOrder = -99;
-    this.scene.add(disc);
+    this.envGroup.add(disc);
+    this.envGroup.add(sprite(radialTex('rgba(255,243,212,0.95)', 'rgba(255,216,154,0)'),
+      150, theme.sunColour, 0.8, disc.position.clone(), THREE.AdditiveBlending));
 
-    // Sun glow billboard, so the key light has a visible source.
-    this.scene.add(sprite(radialTex('rgba(255,243,212,0.95)', 'rgba(255,216,154,0)'), 150, 0xfff0cf, 0.8,
-      new THREE.Vector3(-250, 300, 220), THREE.AdditiveBlending));
-
-    // A few slabs of cloud — cheap, and they give the sky some scale.
     const ct = radialTex('rgba(255,255,255,0.95)', 'rgba(255,255,255,0)');
     const NC = this.q.clouds;
     for (let i = 0; i < NC; i++) {
       const a = (i / NC) * Math.PI * 2 + Math.random();
       const r = 210 + Math.random() * 160;
-      const s = sprite(ct, 90 + Math.random() * 110, 0xfdf6ec, 0.26,
+      const s = sprite(ct, 90 + Math.random() * 110, theme.fogColour, 0.3,
         new THREE.Vector3(Math.cos(a) * r, 78 + Math.random() * 60, Math.sin(a) * r));
       s.material.depthWrite = false;
-      this.scene.add(s);
+      this.envGroup.add(s);
     }
   }
 
-  _terrain() {
-    // Ground. A flat colour reads as a snooker table at this scale; large-scale
-    // blotching plus a tiled grass fleck breaks it up without a real texture.
-    const gt = groundTex();
+  _terrain(theme) {
+    const gt = groundTex(theme);
     gt.repeat.set(60, 60);
-    const gmat = new THREE.MeshStandardMaterial({ color: GROUND, roughness: 0.99, metalness: 0, map: gt });
-    const g = new THREE.Mesh(new THREE.CircleGeometry(400, 64).rotateX(-Math.PI / 2), gmat);
+    const g = new THREE.Mesh(new THREE.CircleGeometry(400, 64).rotateX(-Math.PI / 2),
+      new THREE.MeshStandardMaterial({ color: theme.ground, roughness: 0.99, metalness: 0, map: gt }));
     g.position.y = 0.001;
     g.receiveShadow = true;
-    this.scene.add(g);
+    this.envGroup.add(g);
 
-    // Broad tonal patches, big enough to read as terrain rather than noise.
+    // Trampled ring where the camp orbits — it says the road is a circle before
+    // you ever press A.
+    const ring = new THREE.Mesh(
+      new THREE.RingGeometry(this.orbitR - 1.8, this.orbitR + 1.8, 96).rotateX(-Math.PI / 2),
+      new THREE.MeshStandardMaterial({ color: theme.scorch, roughness: 1,
+        transparent: true, opacity: 0.6 }));
+    ring.position.y = 0.02;
+    this.envGroup.add(ring);
+
+    // Broad tonal patches, soft-edged. Hard circles read as blobs stamped on
+    // the grass, which is worse than a flat field.
     const soft = radialTex('rgba(255,255,255,0.95)', 'rgba(255,255,255,0)');
-    const patchMat = new THREE.MeshBasicMaterial({
-      color: 0x7d8752, transparent: true, opacity: 0.42, map: soft, depthWrite: false });
-    const patchMat2 = new THREE.MeshBasicMaterial({
-      color: 0x5a6640, transparent: true, opacity: 0.38, map: soft, depthWrite: false });
+    this._soft = soft;
+    const pA = new THREE.MeshBasicMaterial({ color: theme.patchA, transparent: true,
+      opacity: 0.42, map: soft, depthWrite: false });
+    const pB = new THREE.MeshBasicMaterial({ color: theme.patchB, transparent: true,
+      opacity: 0.38, map: soft, depthWrite: false });
     for (let i = 0; i < 26; i++) {
-      const a = Math.random() * Math.PI * 2, r = 44 + Math.random() * 170;
+      const a = Math.random() * Math.PI * 2, r = this.orbitR + 6 + Math.random() * 160;
       const sz = 18 + Math.random() * 52;
-      const m = new THREE.Mesh(new THREE.CircleGeometry(sz, 12).rotateX(-Math.PI / 2),
-        i % 2 ? patchMat : patchMat2);
+      const m = new THREE.Mesh(new THREE.CircleGeometry(sz, 14).rotateX(-Math.PI / 2),
+        i % 2 ? pA : pB);
       m.position.set(Math.cos(a) * r, 0.012 + i * 0.0004, Math.sin(a) * r);
       m.scale.set(1, 1, 0.55 + Math.random() * 0.8);
       m.rotation.y = Math.random() * 3;
-      this.scene.add(m);
+      this.envGroup.add(m);
     }
 
-    // Churned, burnt earth under and around the fortress — the ground should
-    // say a siege has been going on here for a while.
+    // Churned earth under the castle, and burn marks around it.
     const scorch = new THREE.Mesh(
-      new THREE.CircleGeometry(30, 40).rotateX(-Math.PI / 2),
-      new THREE.MeshBasicMaterial({ color: 0x6b6144, transparent: true, opacity: 0.6,
+      new THREE.CircleGeometry(this.orbitR * 0.78, 40).rotateX(-Math.PI / 2),
+      new THREE.MeshBasicMaterial({ color: theme.scorch, transparent: true, opacity: 0.55,
         map: soft, depthWrite: false }));
     scorch.position.y = 0.014;
-    this.scene.add(scorch);
-    // Burn marks. These need the soft map too — as flat 8-gons they read as
-    // black polygons stamped on the grass, which is worse than nothing.
+    this.envGroup.add(scorch);
     const burnMat = new THREE.MeshBasicMaterial({ color: 0x4a4232, transparent: true,
-      opacity: 0.34, map: soft, depthWrite: false });
+      opacity: 0.3, map: soft, depthWrite: false });
     for (let i = 0; i < 14; i++) {
-      const a = Math.random() * Math.PI * 2, r = 17 + Math.random() * 18;
-      const m = new THREE.Mesh(new THREE.CircleGeometry(1.6 + Math.random() * 3.2, 18).rotateX(-Math.PI / 2),
-        burnMat);
+      const a = Math.random() * Math.PI * 2, r = this.orbitR * 0.45 + Math.random() * this.orbitR * 0.45;
+      const m = new THREE.Mesh(new THREE.CircleGeometry(1.6 + Math.random() * 3.2, 18)
+        .rotateX(-Math.PI / 2), burnMat);
       m.position.set(Math.cos(a) * r, 0.022 + i * 0.0003, Math.sin(a) * r);
       m.scale.set(1, 1, 0.6 + Math.random() * 0.7);
-      this.scene.add(m);
+      this.envGroup.add(m);
     }
 
-    // Trampled dirt ring where the siege camp orbits — tells you the road is
-    // a circle before you ever press A.
-    const ring = new THREE.Mesh(
-      new THREE.RingGeometry(36.2, 39.8, 96).rotateX(-Math.PI / 2),
-      new THREE.MeshStandardMaterial({ color: 0x7e6f52, roughness: 1, transparent: true, opacity: 0.72 }));
-    ring.position.y = 0.02;
-    ring.receiveShadow = false;
-    this.scene.add(ring);
-
     // Distant hills in three bands, each further one paler and bluer. Aerial
-    // perspective is the cheapest depth cue there is, and without it the ridge
-    // line sits flat against the sky like a cardboard cutout.
+    // perspective is the cheapest depth cue there is; without it the ridge line
+    // sits flat against the sky like a cardboard cutout.
     const bands = [
-      { r: 150, n: Math.round(14 * this.q.hills), h: [14, 30], col: 0x5c6a4c, rough: 1 },
-      { r: 230, n: Math.round(14 * this.q.hills), h: [26, 54], col: 0x6e7c72, rough: 1 },
-      { r: 330, n: Math.round(14 * this.q.hills), h: [40, 82], col: 0x8698a8, rough: 1 },
+      { r: 150, h: [14, 30], col: theme.hills[0] },
+      { r: 230, h: [26, 54], col: theme.hills[1] },
+      { r: 330, h: [40, 82], col: theme.hills[2] },
     ];
     for (const b of bands) {
-      const mat = new THREE.MeshStandardMaterial({ color: b.col, roughness: b.rough, flatShading: true });
-      for (let i = 0; i < b.n; i++) {
-        const a = (i / b.n) * Math.PI * 2 + Math.random() * 0.35;
+      const mat = new THREE.MeshStandardMaterial({ color: b.col, roughness: 1, flatShading: true });
+      const n = Math.round(14 * this.q.hills);
+      for (let i = 0; i < n; i++) {
+        const a = (i / n) * Math.PI * 2 + Math.random() * 0.35;
         const r = b.r + Math.random() * 60;
         const h = b.h[0] + Math.random() * (b.h[1] - b.h[0]);
-        const seg = 4 + ((Math.random() * 3) | 0);
-        const m = new THREE.Mesh(new THREE.ConeGeometry(h * (0.85 + Math.random() * 0.9), h, seg), mat);
+        const m = new THREE.Mesh(
+          new THREE.ConeGeometry(h * (0.85 + Math.random() * 0.9), h, 4 + ((Math.random() * 3) | 0)), mat);
         m.position.set(Math.cos(a) * r, h / 2 - 5, Math.sin(a) * r);
         m.rotation.y = Math.random() * 3;
         m.scale.set(1, 0.72 + Math.random() * 0.5, 1);
-        this.scene.add(m);
+        this.envGroup.add(m);
+      }
+    }
+  }
+
+  // ---- scenery ------------------------------------------------------------
+  //
+  // A prop library rather than "trees and rocks". The mix and the set-pieces
+  // come from the theme, so the same code makes a summer meadow, a harvest
+  // field and a dead marsh.
+
+  _scenery(theme) {
+    const M = {
+      trunk: new THREE.MeshStandardMaterial({ color: theme.trunk, roughness: 1 }),
+      rock: new THREE.MeshStandardMaterial({ color: theme.rock, roughness: 1, flatShading: true }),
+      tuft: new THREE.MeshStandardMaterial({ color: theme.tuft, roughness: 1, flatShading: true }),
+      wood: new THREE.MeshStandardMaterial({ color: 0x6a4a2c, roughness: 0.95 }),
+    };
+    M.hay = new THREE.MeshStandardMaterial({ color: 0xc9a94e, roughness: 1, flatShading: true });
+    M.canopy = theme.canopy.map(c =>
+      new THREE.MeshStandardMaterial({ color: c, roughness: 1, flatShading: true }));
+    M.stone = new THREE.MeshStandardMaterial({ color: theme.rock, roughness: 1 });
+    M.water = new THREE.MeshStandardMaterial({ color: theme.water, roughness: 0.18,
+      metalness: 0.36, transparent: true, opacity: 0.86 });
+    M.reed = new THREE.MeshStandardMaterial({ color: 0x6c7a42, roughness: 1, flatShading: true,
+      side: THREE.DoubleSide });
+    M.flower = theme.flowers.map(c => new THREE.MeshStandardMaterial({ color: c, roughness: 1 }));
+
+    const add = (m, scatter = true) => {
+      this.envGroup.add(m);
+      if (scatter) this.scatter.push(m);
+      return m;
+    };
+    const R = () => Math.random();
+
+    // Somewhere on the field, but never on the orbit road or the castle.
+    const spot = (min = this.orbitR + 3, max = this.orbitR + 120) => {
+      const a = R() * Math.PI * 2;
+      const r = min + Math.pow(R(), 0.62) * (max - min);
+      return [Math.cos(a) * r, Math.sin(a) * r];
+    };
+
+    const broadleaf = (x, z, s = 1) => {
+      const h = (4.5 + R() * 4) * s;
+      const t = new THREE.Mesh(new THREE.CylinderGeometry(0.2 * s, 0.42 * s, h, 6), M.trunk);
+      t.position.set(x, h / 2, z); t.castShadow = true; add(t);
+      const mat = M.canopy[(R() * M.canopy.length) | 0];
+      // Three overlapping lumps, not one cone — a single cone is a Christmas
+      // tree and every broadleaf in the game looked identical.
+      for (let i = 0; i < 3; i++) {
+        const rr = (1.5 + R() * 1.2) * s;
+        const c = new THREE.Mesh(new THREE.IcosahedronGeometry(rr, 0), mat);
+        c.position.set(x + (R() - 0.5) * 1.8 * s, h * (0.82 + R() * 0.32), z + (R() - 0.5) * 1.8 * s);
+        c.rotation.set(R() * 3, R() * 3, R() * 3);
+        c.castShadow = true; add(c);
+      }
+    };
+
+    const conifer = (x, z, s = 1) => {
+      const h = (6 + R() * 5) * s;
+      const t = new THREE.Mesh(new THREE.CylinderGeometry(0.16 * s, 0.34 * s, h * 0.5, 5), M.trunk);
+      t.position.set(x, h * 0.25, z); t.castShadow = true; add(t);
+      const mat = M.canopy[(R() * M.canopy.length) | 0];
+      for (let i = 0; i < 3; i++) {
+        const f = 1 - i * 0.26;
+        const c = new THREE.Mesh(new THREE.ConeGeometry(1.9 * f * s, h * 0.5 * f + 1, 6), mat);
+        c.position.set(x, h * (0.32 + i * 0.24), z);
+        c.rotation.y = R() * 3; c.castShadow = true; add(c);
+      }
+    };
+
+    // Bare, forked and slightly leaning. Does most of the work in the marsh.
+    const dead = (x, z, s = 1) => {
+      const h = (4 + R() * 4) * s;
+      const t = new THREE.Mesh(new THREE.CylinderGeometry(0.12 * s, 0.34 * s, h, 5), M.trunk);
+      t.position.set(x, h / 2, z);
+      t.rotation.z = (R() - 0.5) * 0.34;
+      t.castShadow = true; add(t);
+      for (let i = 0; i < 3 + ((R() * 3) | 0); i++) {
+        const bl = (1 + R() * 2) * s;
+        const br = new THREE.Mesh(new THREE.CylinderGeometry(0.05 * s, 0.11 * s, bl, 4), M.trunk);
+        const a = R() * Math.PI * 2, lean = 0.5 + R() * 0.7;
+        br.position.set(x + Math.cos(a) * bl * 0.3, h * (0.55 + R() * 0.4), z + Math.sin(a) * bl * 0.3);
+        br.rotation.set(Math.cos(a) * lean, 0, Math.sin(a) * -lean);
+        br.castShadow = true; add(br);
+      }
+    };
+
+    const bush = (x, z) => {
+      const mat = M.canopy[(R() * M.canopy.length) | 0];
+      for (let i = 0; i < 2 + ((R() * 2) | 0); i++) {
+        const rr = 0.5 + R() * 0.7;
+        const c = new THREE.Mesh(new THREE.IcosahedronGeometry(rr, 0), mat);
+        c.position.set(x + (R() - 0.5) * 1.2, rr * 0.8, z + (R() - 0.5) * 1.2);
+        c.rotation.set(R() * 3, R() * 3, R() * 3);
+        c.castShadow = true; add(c);
+      }
+    };
+
+    const rock = (x, z) => {
+      const s = 0.5 + R() * 1.6;
+      const m = new THREE.Mesh(new THREE.DodecahedronGeometry(s, 0), M.rock);
+      m.position.set(x, s * 0.5, z);
+      m.rotation.set(R() * 3, R() * 3, R() * 3);
+      m.scale.set(1, 0.6 + R() * 0.5, 1);
+      m.castShadow = true; m.receiveShadow = true; add(m);
+    };
+
+    const tuft = (x, z) => {
+      const m = new THREE.Mesh(new THREE.ConeGeometry(0.45 + R() * 0.3, 0.7 + R() * 0.6, 4), M.tuft);
+      m.position.set(x, 0.4, z); m.rotation.y = R() * 3; add(m);
+      // A few flowers in the grass. Tiny, but they are the only saturated thing
+      // on the field and the eye finds them immediately.
+      if (R() < 0.45) {
+        for (let i = 0; i < 2 + ((R() * 3) | 0); i++) {
+          const f = new THREE.Mesh(new THREE.SphereGeometry(0.09, 5, 4),
+            M.flower[(R() * M.flower.length) | 0]);
+          f.position.set(x + (R() - 0.5) * 1.6, 0.42 + R() * 0.2, z + (R() - 0.5) * 1.6);
+          add(f);
+        }
+      }
+    };
+
+    // ---- scatter ----
+    const mix = theme.mix;
+    const roll = () => {
+      let r = R(), acc = 0;
+      for (const k of Object.keys(mix)) { acc += mix[k]; if (r <= acc) return k; }
+      return 'tuft';
+    };
+    // Clustered, not sprinkled. An even scatter of same-sized trees reads as
+    // wallpaper; copses with gaps between them read as countryside.
+    const place = (x, z, s) => {
+      switch (roll()) {
+        case 'broadleaf': broadleaf(x, z, s); break;
+        case 'conifer': conifer(x, z, s); break;
+        case 'dead': dead(x, z, s); break;
+        case 'bush': bush(x, z); break;
+        case 'rock': rock(x, z); break;
+        default: tuft(x, z);
+      }
+    };
+    for (let c = 0; c < 22; c++) {
+      const [cx, cz] = spot();
+      const n = 2 + ((R() * 7) | 0);
+      const spread = 4 + R() * 12;
+      for (let i = 0; i < n; i++) {
+        // Size falls off from the middle of the copse, so each one has a crown.
+        const f = i / n;
+        place(cx + (R() - 0.5) * spread, cz + (R() - 0.5) * spread,
+          (1.25 - f * 0.5) * (0.7 + R() * 0.6));
+      }
+    }
+    for (let i = 0; i < 46; i++) {          // loners between the copses
+      const [x, z] = spot();
+      place(x, z, 0.65 + R() * 0.8);
+    }
+
+    // ---- set pieces ----
+    const P = theme.props;
+
+    // Hedgerow fences: posts and two rails, following a gentle arc.
+    for (let f = 0; f < P.fences; f++) {
+      const [sx, sz] = spot(this.orbitR + 7, this.orbitR + 55);
+      const dir = R() * Math.PI * 2, n = 5 + ((R() * 6) | 0);
+      for (let i = 0; i < n; i++) {
+        const bend = Math.sin(i * 0.5) * 0.5;
+        const px = sx + Math.cos(dir + bend) * i * 2.4;
+        const pz = sz + Math.sin(dir + bend) * i * 2.4;
+        const post = new THREE.Mesh(new THREE.BoxGeometry(0.16, 1.5, 0.16), M.wood);
+        post.position.set(px, 0.72, pz); post.castShadow = true; add(post);
+        if (i) {
+          for (const h of [0.6, 1.15]) {
+            const rail = new THREE.Mesh(new THREE.BoxGeometry(2.45, 0.11, 0.09), M.wood);
+            const qx = sx + Math.cos(dir + bend) * (i - 0.5) * 2.4;
+            const qz = sz + Math.sin(dir + bend) * (i - 0.5) * 2.4;
+            rail.position.set(qx, h, qz);
+            rail.rotation.y = -(dir + bend);
+            add(rail);
+          }
+        }
       }
     }
 
-    // Trees + rocks + tufts, kept off the orbit road and off the fortress.
-    const trunkM = new THREE.MeshStandardMaterial({ color: 0x4d3a28, roughness: 1 });
-    const leafM = new THREE.MeshStandardMaterial({ color: 0x4c6b3a, roughness: 1, flatShading: true });
-    const rockM = new THREE.MeshStandardMaterial({ color: 0x7d7a72, roughness: 1, flatShading: true });
-    const tuftM = new THREE.MeshStandardMaterial({ color: 0x77864f, roughness: 1, flatShading: true });
-    this.scatter = [];
-    for (let i = 0; i < 150; i++) {
-      const a = Math.random() * Math.PI * 2;
-      const r = 36 + Math.pow(Math.random(), 0.6) * 120;
-      const x = Math.cos(a) * r, z = Math.sin(a) * r;
-      const roll = Math.random();
-      if (roll < 0.42) {
-        const h = 4 + Math.random() * 6;
-        const t = new THREE.Mesh(new THREE.CylinderGeometry(0.24, 0.4, h, 6), trunkM);
-        t.position.set(x, h / 2, z); t.castShadow = true;
-        const cn = new THREE.Mesh(new THREE.ConeGeometry(1.9 + Math.random(), h * 0.95, 6), leafM);
-        cn.position.set(x, h * 0.95, z); cn.castShadow = true; cn.rotation.y = Math.random() * 3;
-        this.scene.add(t, cn); this.scatter.push(t, cn);
-      } else if (roll < 0.66) {
-        const s = 0.5 + Math.random() * 1.5;
-        const m = new THREE.Mesh(new THREE.DodecahedronGeometry(s, 0), rockM);
-        m.position.set(x, s * 0.55, z);
-        m.rotation.set(Math.random() * 3, Math.random() * 3, Math.random() * 3);
-        m.castShadow = true; m.receiveShadow = true;
-        this.scene.add(m); this.scatter.push(m);
-      } else {
-        const m = new THREE.Mesh(new THREE.ConeGeometry(0.5, 0.9, 4), tuftM);
-        m.position.set(x, 0.42, z); m.rotation.y = Math.random() * 3;
-        this.scene.add(m); this.scatter.push(m);
+    // Stooks — cones of cut corn standing in the stubble.
+    for (let i = 0; i < P.hay; i++) {
+      const [x, z] = spot(this.orbitR + 6, this.orbitR + 48);
+      const cluster = 1 + ((R() * 4) | 0);
+      for (let k = 0; k < cluster; k++) {
+        const h = 1.6 + R() * 0.9;
+        const m = new THREE.Mesh(new THREE.ConeGeometry(0.85, h, 7), M.hay);
+        m.position.set(x + (R() - 0.5) * 3.4, h / 2, z + (R() - 0.5) * 3.4);
+        m.rotation.y = R() * 3;
+        m.castShadow = true; add(m);
       }
+    }
+
+    for (let i = 0; i < P.cart; i++) {
+      const [x, z] = spot(this.orbitR + 6, this.orbitR + 42);
+      const g = new THREE.Group();
+      const bed = new THREE.Mesh(new THREE.BoxGeometry(3.0, 0.34, 1.5), M.wood);
+      bed.position.y = 1.0; g.add(bed);
+      for (const sx of [-1, 1]) {
+        const side = new THREE.Mesh(new THREE.BoxGeometry(3.0, 0.7, 0.12), M.wood);
+        side.position.set(0, 1.4, sx * 0.7); g.add(side);
+        for (const wx of [-0.95, 0.95]) {
+          const w = new THREE.Mesh(new THREE.CylinderGeometry(0.72, 0.72, 0.18, 12), M.wood);
+          w.rotation.x = Math.PI / 2; w.position.set(wx, 0.72, sx * 0.86); g.add(w);
+        }
+      }
+      const shaft = new THREE.Mesh(new THREE.BoxGeometry(2.2, 0.12, 0.12), M.wood);
+      shaft.position.set(2.2, 0.8, 0); shaft.rotation.z = 0.18; g.add(shaft);
+      g.position.set(x, 0, z); g.rotation.y = R() * 6;
+      g.traverse(o => { if (o.isMesh) o.castShadow = true; });
+      add(g);
+    }
+
+    // Standing water, with reeds around the rim.
+    for (let i = 0; i < P.pond; i++) {
+      const [x, z] = spot(this.orbitR + 8, this.orbitR + 52);
+      const rr = 5 + R() * 7;
+      const w = new THREE.Mesh(new THREE.CircleGeometry(rr, 26).rotateX(-Math.PI / 2), M.water);
+      w.position.set(x, 0.05, z);
+      w.scale.set(1, 1, 0.6 + R() * 0.6);
+      add(w);
+      const bank = new THREE.Mesh(new THREE.CircleGeometry(rr * 1.25, 26).rotateX(-Math.PI / 2),
+        new THREE.MeshBasicMaterial({ color: theme.scorch, transparent: true, opacity: 0.4,
+          map: this._soft, depthWrite: false }));
+      bank.position.set(x, 0.03, z); bank.scale.copy(w.scale);
+      add(bank);
+      for (let k = 0; k < 14; k++) {
+        const a = R() * Math.PI * 2, d = rr * (0.85 + R() * 0.4);
+        const rd = new THREE.Mesh(new THREE.PlaneGeometry(0.5, 1.4 + R()), M.reed);
+        rd.position.set(x + Math.cos(a) * d, 0.7, z + Math.sin(a) * d * (0.6 + R() * 0.6));
+        rd.rotation.y = R() * 3; add(rd);
+      }
+    }
+
+    for (let i = 0; i < P.reeds; i++) {
+      const [x, z] = spot(this.orbitR + 5, this.orbitR + 45);
+      for (let k = 0; k < 5; k++) {
+        const rd = new THREE.Mesh(new THREE.PlaneGeometry(0.45, 1.2 + R()), M.reed);
+        rd.position.set(x + (R() - 0.5) * 2.2, 0.62, z + (R() - 0.5) * 2.2);
+        rd.rotation.y = R() * 3; add(rd);
+      }
+    }
+
+    // Broken walls: the same masonry as the castle, half fallen.
+    for (let i = 0; i < P.ruin; i++) {
+      const [x, z] = spot(this.orbitR + 7, this.orbitR + 46);
+      const dir = R() * Math.PI * 2, n = 4 + ((R() * 4) | 0);
+      for (let c = 0; c < 3; c++) {
+        for (let k = 0; k < n; k++) {
+          if (R() < 0.16 + c * 0.24) continue;              // the collapse
+          const off = (c % 2) * 0.75;
+          const px = x + Math.cos(dir) * (k * 1.5 + off);
+          const pz = z + Math.sin(dir) * (k * 1.5 + off);
+          const m = new THREE.Mesh(new THREE.BoxGeometry(1.45, 0.7, 0.9), M.stone);
+          m.position.set(px, 0.36 + c * 0.7, pz);
+          m.rotation.y = -dir + (R() - 0.5) * 0.06;
+          m.castShadow = true; m.receiveShadow = true; add(m);
+        }
+      }
+    }
+
+    for (let i = 0; i < P.stones; i++) {
+      const [x, z] = spot(this.orbitR + 7, this.orbitR + 55);
+      const n = 4 + ((R() * 4) | 0), rr = 3 + R() * 3;
+      for (let k = 0; k < n; k++) {
+        const a = (k / n) * Math.PI * 2;
+        const h = 2.4 + R() * 2.4;
+        const m = new THREE.Mesh(new THREE.BoxGeometry(0.9 + R() * 0.5, h, 0.55 + R() * 0.3), M.stone);
+        m.position.set(x + Math.cos(a) * rr, h / 2, z + Math.sin(a) * rr);
+        m.rotation.set((R() - 0.5) * 0.12, a, (R() - 0.5) * 0.12);
+        m.castShadow = true; add(m);
+      }
+    }
+
+    // Birds: three-segment silhouettes wheeling slowly overhead. Cheap, and the
+    // sky stops being an empty gradient.
+    const birdMat = new THREE.MeshBasicMaterial({ color: 0x2a2620, fog: false,
+      side: THREE.DoubleSide });
+    for (let i = 0; i < P.birds; i++) {
+      const g = new THREE.Group();
+      for (const sx of [-1, 1]) {
+        const w = new THREE.Mesh(new THREE.PlaneGeometry(1.5, 0.3), birdMat);
+        w.position.x = sx * 0.75; w.rotation.z = sx * 0.4; w.rotation.x = -Math.PI / 2;
+        g.add(w);
+      }
+      g.userData = { r: 55 + R() * 90, h: 34 + R() * 34, sp: 0.09 + R() * 0.1, ph: R() * 7 };
+      this.envGroup.add(g);
+      this.birds.push(g);
     }
   }
 
@@ -327,7 +613,7 @@ export class Renderer {
       return tiers;
     };
     return {
-      plinth: make(0x6f6a5e, 1.0, 2, stoneMaps),
+      plinth: make(this.theme ? this.theme.plinth : 0x6f6a5e, 1.0, 2, stoneMaps),
       stone: make(0xaaa08c, 0.94, 7, stoneMaps),
       block: make(0xb8ab93, 0.92, 7, stoneMaps),
       timber: make(0x8a6339, 0.86, 5, woodMaps),
@@ -346,6 +632,10 @@ export class Renderer {
 
   addPart(p) {
     if (p.kind === 'ground') return;
+    // The knight has its own rig, built in knightMesh() and driven by the game.
+    // Without this it ALSO gets the generic block mesh below and flies to the
+    // fortress sealed inside a 1.12m stone cube.
+    if (p.kind === 'knight') return;
     if (p.kind === 'banner') { this._bannerMesh(p); return; }
     if (p.kind === 'soldier') { this._soldierMesh(p); return; }
 
@@ -852,6 +1142,17 @@ export class Renderer {
       h.rotation.x += u.w.x * dt; h.rotation.y += u.w.y * dt; h.rotation.z += u.w.z * dt;
       if (u.life <= 0) h.visible = false;
     }
+    if (this.birds) {
+      const t = performance.now() * 0.001;
+      for (const b of this.birds) {
+        const u = b.userData, a = t * u.sp + u.ph;
+        b.position.set(Math.cos(a) * u.r, u.h + Math.sin(a * 2.3) * 3, Math.sin(a) * u.r);
+        b.rotation.y = -a + Math.PI / 2;
+        const flap = Math.sin(t * 7 + u.ph) * 0.35;
+        b.children[0].rotation.z = 0.4 + flap;
+        b.children[1].rotation.z = -0.4 - flap;
+      }
+    }
     if (this.flag) this.flag.rotation.y = Math.sin(performance.now() * 0.002) * 0.22;
     if (this.flame) {
       const t = performance.now() * 0.006;
@@ -988,7 +1289,7 @@ function markerTex() {
   return _markerTex;
 }
 
-function groundTex() {
+function groundTex(theme) {
   const S = 64;
   const cv = document.createElement('canvas');
   cv.width = cv.height = S;
@@ -996,7 +1297,8 @@ function groundTex() {
   g.fillStyle = '#ffffff'; g.fillRect(0, 0, S, S);
   for (let i = 0; i < 90; i++) {
     const x = Math.random() * S, y = Math.random() * S;
-    g.strokeStyle = `rgba(${90 + Math.random() * 70},${110 + Math.random() * 60},${60},${0.10 + Math.random() * 0.16})`;
+    const c = new THREE.Color(theme ? theme.patchB : 0x5d7440);
+    g.strokeStyle = `rgba(${(c.r * 255) | 0},${(c.g * 255) | 0},${(c.b * 255) | 0},${0.12 + Math.random() * 0.2})`;
     g.lineWidth = 1;
     g.beginPath(); g.moveTo(x, y); g.lineTo(x + (Math.random() - 0.5) * 4, y - 2 - Math.random() * 3); g.stroke();
   }

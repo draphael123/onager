@@ -8,15 +8,21 @@
 // Everything here runs with renderer = null, so it measures the simulation and
 // not the presentation.
 
-import { Game, S, ORBIT_R, SPEED_MIN, SPEED_MAX } from './game.js';
+import { Game, S, SPEED_MIN, SPEED_MAX } from './game.js';
+import { LEVELS } from './levels.js';
 import { seed } from './rand.js';
 
 const N = 0, E = Math.PI / 2, SO = Math.PI, W = -Math.PI / 2;
 export const FACE_ANGLE = { north: N, east: E, south: SO, west: W };
 
-function fresh(sd = 12345, knights = 9) {
+// Level index defaults to the LAST one — the assertions were all written
+// against Blackmere and its geometry.
+let SIM_LEVEL = LEVELS.length - 1;
+export function setSimLevel(i) { SIM_LEVEL = i; }
+
+function fresh(sd = 12345, knights = 0) {
   seed(sd);
-  return new Game(null, null, { knights });
+  return new Game(null, null, { knights, level: SIM_LEVEL });
 }
 
 function tick(g, n) { for (let i = 0; i < n; i++) g._tick(); }
@@ -294,7 +300,7 @@ export const BEST = {
 // a human with the arc preview aims at least this well.
 
 export function bot(sd = 7, opts = {}) {
-  const g = fresh(sd, opts.knights || 9);
+  const g = fresh(sd, opts.knights || 0);
   const log = [];
   let unreachable = 0;
   while (g.state === S.AIM && g.knights > 0) {

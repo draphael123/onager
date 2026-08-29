@@ -3,9 +3,12 @@
 import * as RAPIER from '../vendor/rapier.es.js';
 import { Renderer } from './render.js';
 import { Sfx } from './audio.js';
-import { Game, S, FACES } from './game.js';
-import { runSim, sweep, sweepAll, audit, bot, reachability, FACE_ANGLE, BEST } from './sim.js';
+import { Game, S } from './game.js';
+import { LEVELS, loadProgress, saveProgress } from './levels.js';
+import { runSim, sweep, sweepAll, audit, bot, reachability, setSimLevel, FACE_ANGLE, BEST } from './sim.js';
 import { SET, loadSettings, saveSettings, applySettings, activeQualityName, activeQuality } from './settings.js';
+
+let prog = loadProgress();
 
 const $ = (id) => document.getElementById(id);
 const boot = $('boot'), bootmsg = $('bootmsg');
@@ -28,7 +31,7 @@ const keys = new Set();
     bootmsg.textContent = 'Raising the fortress';
     rd = new Renderer($('stage'));
     sfx = new Sfx();
-    game = new Game(rd, sfx);
+    game = new Game(rd, sfx, { level: 0 });
     applySettings(rd, sfx);
     rd.setScatterDensity(activeQuality().scatter);
 
@@ -70,7 +73,7 @@ function buildHud() {
   }
   const cw = $('compass'); cw.innerHTML = '';
   csegs = [];
-  for (let i = 0; i < FACES.length; i++) {
+  for (let i = 0; i < game.faces.length; i++) {
     const d = document.createElement('div'); d.className = 'cseg';
     cw.appendChild(d); csegs.push(d);
   }
@@ -96,8 +99,9 @@ function syncHud(dt) {
   $('facesub').textContent = f.sub;
 
   let best = 0, bd = 9;
-  for (let i = 0; i < FACES.length; i++) {
-    const d = Math.abs(Math.atan2(Math.sin(game.angle - FACES[i].a), Math.cos(game.angle - FACES[i].a)));
+  for (let i = 0; i < game.faces.length; i++) {
+    const fa = game.faces[i].a;
+    const d = Math.abs(Math.atan2(Math.sin(game.angle - fa), Math.cos(game.angle - fa)));
     if (d < bd) { bd = d; best = i; }
   }
   csegs.forEach((c, i) => c.classList.toggle('on', i === best && !f.corner));
@@ -108,12 +112,39 @@ function syncHud(dt) {
 
 function showCard() {
   const r = game.result; if (!r) return;
+  const idx = game.levelIdx, L = LEVELS[idx];
+  const last = idx >= LEVELS.length - 1;
+
+  if (r.win) {
+    prog.best[L.id] = Math.max(prog.best[L.id] || 0, r.score);
+    if (!last) prog.unlocked = Math.max(prog.unlocked, idx + 2);
+    saveProgress(prog);
+  }
+
   $('cardTitle').textContent = r.win ? 'THE FORTRESS FALLS' : 'THE GARRISON HOLDS';
   $('cardSub').innerHTML = r.win
-    ? `${r.score} points<br>${r.knightsLeft} knight${r.knightsLeft === 1 ? '' : 's'} unspent &middot; ` +
-      `${r.broken} blocks broken &middot; ${r.standards}/3 standards`
+    ? `${L.name} &middot; ${r.score} points<br>${r.knightsLeft} knight${r.knightsLeft === 1 ? '' : 's'} unspent ` +
+      `&middot; ${r.broken} blocks broken &middot; ${r.standards} standard${r.standards === 1 ? '' : 's'}`
     : `${r.standing} still holding the walls<br>${r.score} points &middot; ${r.broken} blocks broken`;
+
+  const foot = $('cardBtns');
+  foot.innerHTML = '';
+  if (r.win && !last) {
+    foot.appendChild(mkBtn('Next castle', () => startLevel(idx + 1), true));
+  } else if (r.win && last) {
+    foot.appendChild(mkBtn('All castles taken', () => toTitle(), true));
+  }
+  foot.appendChild(mkBtn(r.win ? 'Again' : 'Try again', () => startLevel(idx), !r.win));
+  foot.appendChild(mkBtn('Castles', () => toTitle(), false, true));
   $('card').classList.add('on');
+}
+
+function mkBtn(label, fn, primary = false, ghost = false) {
+  const b = document.createElement('button');
+  b.className = 'tbtn' + (ghost || !primary ? ' ghost' : '');
+  b.textContent = label;
+  b.addEventListener('click', fn);
+  return b;
 }
 
 // ---- drag band ------------------------------------------------------------
@@ -210,7 +241,7 @@ function wireInput() {
   addEventListener('keyup', (e) => keys.delete(e.key.toLowerCase()));
   addEventListener('blur', () => { keys.clear(); orbitHeld = 0; });
 
-  $('cardBtn').addEventListener('click', restart);
+  // The result card builds its own buttons per outcome; see showCard().
 
   // Touch controls. Orbit is the third axis and there is no keyboard on a
   // phone, so it needs real buttons rather than a gesture that would fight
@@ -237,17 +268,42 @@ function buzz(ms) {
   }
 }
 
-function restart() {
+function restart() { startLevel(game.levelIdx); }
+
+function startLevel(i) {
   $('card').classList.remove('on');
-  game.reset();
+  closePanel();
+  playing = true;
+  $('title').classList.add('gone');
+  // Hide it outright once the fade is done. A CSS transition can stall when the
+  // tab is unfocused, leaving a fully opaque title sitting over the game.
+  clearTimeout(titleHideT);
+  titleHideT = setTimeout(() => { if (playing) $('title').style.display = 'none'; }, 620);
+  document.body.classList.remove('pregame');
+  document.body.classList.add('playing');
+  game.setLevel(i);
   buildHud();
-  hint('Circle with A and D. The faces are not the same.', 5);
+  const L = LEVELS[i];
+  hint(`${L.name} — ${L.blurb}`, 6);
+}
+
+function toTitle() {
+  $('card').classList.remove('on');
+  closePanel();
+  playing = false;
+  document.body.classList.add('pregame');
+  document.body.classList.remove('playing');
+  clearTimeout(titleHideT);
+  $('title').style.display = '';
+  $('title').classList.remove('gone');
+  renderLevelPicker();
 }
 
 // ---- menus ----------------------------------------------------------------
 
 function wireMenus() {
   $('btnPlay').addEventListener('click', beginGame);
+  renderLevelPicker();
   $('btnHow').addEventListener('click', () => openPanel(howToHtml()));
   $('btnSet').addEventListener('click', () => openPanel(settingsHtml(), wireSettings));
   $('gear').addEventListener('click', () => openPanel(settingsHtml(), wireSettings));
@@ -256,13 +312,25 @@ function wireMenus() {
 
 function beginGame() {
   sfx.resume();
-  playing = true;
-  $('title').classList.add('gone');
-  document.body.classList.remove('pregame');
-  document.body.classList.add('playing');
-  game.reset();
-  buildHud();
-  hint('Circle with A and D — or the arrows. The faces are not the same.', 6);
+  startLevel(Math.min(prog.unlocked, LEVELS.length) - 1);
+}
+
+// The picker doubles as the level list: it shows what is unlocked and the best
+// score on each, which is the whole progression UI.
+function renderLevelPicker() {
+  const wrap = $('levels');
+  if (!wrap) return;
+  wrap.innerHTML = '';
+  LEVELS.forEach((L, i) => {
+    const open = i < prog.unlocked;
+    const b = document.createElement('button');
+    b.className = 'lvl' + (open ? '' : ' locked');
+    b.innerHTML = `<span class="n">${L.id}</span>` +
+      `<span class="t">${L.name}<em>${open ? L.sub : 'Take the castle before it'}</em></span>` +
+      `<span class="s">${prog.best[L.id] ? prog.best[L.id] : (open ? '&mdash;' : '&#128274;')}</span>`;
+    if (open) b.addEventListener('click', () => { sfx.resume(); startLevel(i); });
+    wrap.appendChild(b);
+  });
 }
 
 function openPanel(html, wire) {
@@ -370,7 +438,7 @@ function wireSettings() {
 
 // ---- loop -----------------------------------------------------------------
 
-let last = performance.now(), frames = 0, alive = 0, cardPending = false;
+let last = performance.now(), frames = 0, alive = 0, cardPending = false, titleHideT = 0;
 let paused = false;                  // headless sweeps starve if the world runs
 
 // One tick of everything, so the RAF loop and the watchdog cannot drift apart.
@@ -434,6 +502,8 @@ window.ONAGER = {
   settle(max) { return game.settleOut(max); },
   reset() { restart(); },
   play() { beginGame(); },
-  sim: runSim, sweep, sweepAll, audit, bot, reachability, FACE_ANGLE, BEST,
+  level(i) { startLevel(i); },
+  title() { toTitle(); },
+  sim: runSim, sweep, sweepAll, audit, bot, reachability, setSimLevel, LEVELS, FACE_ANGLE, BEST,
   pause(on = true) { paused = on; return paused; },
 };
