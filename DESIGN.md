@@ -159,6 +159,12 @@ All of this is in service of one question: did that hit feel like anything?
   now ~2,600 pieces of scenery for less than the old 800 cost. Each pool is
   sorted nearest-first, so the quality dial thins the horizon rather than
   punching holes in the middle of the view.
+- **Nothing tall spawns in the camera ring.** The camera sits about eight
+  metres beyond the road, so scenery seeded from orbitR+3 outward could land
+  between it and the castle, or directly on top of it — a conifer filling a
+  quarter of the frame. Trees and set pieces start at orbitR+16. Grass and
+  flowers are the exception: they are ankle height and can carpet the ground the
+  camera actually looks across.
 - **A siege camp** parented to the machine so it travels round the ring with you:
   tents, a campfire carrying the only warm light in the scene, stores, and the
   knights who have not been fired yet standing in a row — the ammunition counter,
@@ -181,7 +187,8 @@ three seeds:
   world asleep
 - Preview matches actual flight to 0.7cm
 - Every shot resolves inside 5s
-- 7.25ms average frame on desktop, 7.8ms on an emulated phone, at ~380 bodies
+- 3.0ms average frame at ~380 bodies AND 4,170 pieces of instanced scenery,
+  in 590 draw calls — faster than the bare version was before instancing
 - The aiming bot clears 4 of 5 runs, averaging 8.8 of 9
 
 **Honest note on West.** The original claim was that west could not be beaten at

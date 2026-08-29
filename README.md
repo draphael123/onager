@@ -108,8 +108,8 @@ src/rand.js       seeded stream for anything that affects the simulation
 - Trajectory preview matches actual flight to within **0.7cm**, and the impact
   marker lands within **0.44m** of the knight's real first contact
 - Every shot resolves in under **5s**
-- **7.25ms** average frame (desktop) / **7.8ms** (emulated phone), during a live
-  collapse at ~380 bodies
+- **3.0ms** average frame at ~380 bodies plus **4,170** instanced scenery pieces
+  in 590 draw calls
 - The aiming bot clears **4 of 5** runs, averaging 8.8 of 9 soldiers
 - Soldiers die to falling masonry as well as direct hits: 5 crushed / 11 struck
   across a measured three-shot opening

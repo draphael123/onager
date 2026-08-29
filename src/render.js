@@ -364,8 +364,11 @@ export class Renderer {
       e.list.push({ m: new THREE.Matrix4().compose(Pos, Q, Scl), d: Math.hypot(x, z) });
     };
 
-    // Somewhere on the field, never on the orbit road or the castle.
-    const spot = (min = this.orbitR + 3, max = this.orbitR + 130) => {
+    // Somewhere on the field, and crucially OUTSIDE the camera's own ring. The
+    // camera sits about 8m beyond the road, so anything spawned from orbitR+3
+    // outward could land between it and the castle or directly on top of it —
+    // a conifer filling a quarter of the frame. Big scenery starts at +16.
+    const spot = (min = this.orbitR + 16, max = this.orbitR + 130) => {
       const a = R() * Math.PI * 2;
       const r = min + Math.pow(R(), 0.62) * (max - min);
       return [Math.cos(a) * r, Math.sin(a) * r];
@@ -428,13 +431,15 @@ export class Renderer {
     // A clump of three short leaning blades. One upright cone at 0.7-1.3m tall
     // reads as a traffic cone, not grass — the give-away is that it is taller
     // than it is wide and perfectly vertical.
+    // Blades, not tents. At 0.3-0.56 radius and 0.7 tall these read as a field
+    // of little pyramids; grass wants to be thin, short and numerous.
     const tuft = (x, z) => {
-      const n = 2 + ((R() * 3) | 0);
+      const n = 3 + ((R() * 4) | 0);
       for (let k = 0; k < n; k++) {
-        const rr = 0.3 + R() * 0.26, h = 0.34 + R() * 0.36;
-        const a = R() * Math.PI * 2, lean = 0.16 + R() * 0.4;
+        const rr = 0.11 + R() * 0.13, h = 0.28 + R() * 0.3;
+        const a = R() * Math.PI * 2, lean = 0.2 + R() * 0.5;
         push(G.cone4, M.tuft,
-          x + Math.cos(a) * 0.28, h * 0.5, z + Math.sin(a) * 0.28,
+          x + Math.cos(a) * 0.24, h * 0.5, z + Math.sin(a) * 0.24,
           rr, h, rr, Math.cos(a) * lean, R() * 3, Math.sin(a) * -lean, false);
       }
       // Flowers are tiny but they are the only saturated thing on the field and
@@ -442,8 +447,12 @@ export class Renderer {
       if (R() < 0.5) {
         const fm = M.flower[(R() * M.flower.length) | 0];
         for (let i = 0; i < 2 + ((R() * 3) | 0); i++) {
-          push(G.blob, fm, x + (R() - 0.5) * 1.6, 0.42 + R() * 0.2, z + (R() - 0.5) * 1.6,
-            0.09, 0.09, 0.09, 0, 0, 0, false);
+          // A flower head at 0.09 is a golf ball lying in the grass at this
+          // scale; it wants to be a speck of colour on a stem.
+          const fx = x + (R() - 0.5) * 1.6, fz = z + (R() - 0.5) * 1.6;
+          const fh = 0.3 + R() * 0.22;
+          push(G.cone4, M.tuft, fx, fh * 0.5, fz, 0.02, fh, 0.02, 0, 0, 0, false);
+          push(G.blob, fm, fx, fh, fz, 0.055, 0.045, 0.055, 0, 0, 0, false);
         }
       }
     };
@@ -486,18 +495,28 @@ export class Renderer {
       const [x, z] = spot();
       place(x, z, 0.65 + R() * 0.8);
     }
-    // A thick belt of grass and flowers just off the road, where the camera
-    // spends all its time.
-    for (let i = 0; i < 150; i++) {
-      const a = R() * Math.PI * 2, r = this.orbitR + 2 + R() * 16;
+    // Grass and flowers are the exception: they are ankle height, so they can
+    // carpet the ground the camera actually looks across without ever blocking
+    // the castle. Inside the road and just outside it.
+    for (let i = 0; i < 130; i++) {
+      const a = R() * Math.PI * 2, r = this.orbitR - 14 + R() * 12;
       tuft(Math.cos(a) * r, Math.sin(a) * r);
+    }
+    for (let i = 0; i < 170; i++) {
+      const a = R() * Math.PI * 2, r = this.orbitR + 2 + R() * 22;
+      tuft(Math.cos(a) * r, Math.sin(a) * r);
+    }
+    // Low rocks in the same band — they read as ground detail, not obstacles.
+    for (let i = 0; i < 26; i++) {
+      const a = R() * Math.PI * 2, r = this.orbitR + 4 + R() * 18;
+      rock(Math.cos(a) * r, Math.sin(a) * r, 0.42 + R() * 0.3);
     }
 
     // ---- set pieces ----
     const P = theme.props;
 
     for (let f = 0; f < P.fences; f++) {
-      const [sx, sz] = spot(this.orbitR + 7, this.orbitR + 55);
+      const [sx, sz] = spot(this.orbitR + 18, this.orbitR + 62);
       const dir = R() * Math.PI * 2, n = 6 + ((R() * 8) | 0);
       for (let i = 0; i < n; i++) {
         const bend = Math.sin(i * 0.5) * 0.5;
@@ -513,7 +532,7 @@ export class Renderer {
     }
 
     for (let i = 0; i < P.hay; i++) {
-      const [x, z] = spot(this.orbitR + 6, this.orbitR + 48);
+      const [x, z] = spot(this.orbitR + 17, this.orbitR + 56);
       for (let k = 0; k < 1 + ((R() * 4) | 0); k++) {
         const h = 1.6 + R() * 0.9;
         push(G.cone, M.hay, x + (R() - 0.5) * 3.4, h / 2, z + (R() - 0.5) * 3.4,
@@ -522,7 +541,7 @@ export class Renderer {
     }
 
     for (let i = 0; i < P.cart; i++) {
-      const [x, z] = spot(this.orbitR + 6, this.orbitR + 42);
+      const [x, z] = spot(this.orbitR + 17, this.orbitR + 50);
       const a = R() * 6, ca = Math.cos(a), sa = Math.sin(a);
       const at = (ox, oz) => [x + ox * ca - oz * sa, z + ox * sa + oz * ca];
       let [bx, bz] = at(0, 0);
@@ -540,7 +559,7 @@ export class Renderer {
     }
 
     for (let i = 0; i < P.pond; i++) {
-      const [x, z] = spot(this.orbitR + 8, this.orbitR + 52);
+      const [x, z] = spot(this.orbitR + 19, this.orbitR + 60);
       const rr = 5 + R() * 7, sq = 0.6 + R() * 0.6;
       const w = new THREE.Mesh(new THREE.CircleGeometry(rr, 26).rotateX(-Math.PI / 2), M.water);
       w.position.set(x, 0.05, z); w.scale.set(1, 1, sq);
@@ -556,12 +575,12 @@ export class Renderer {
       }
     }
     for (let i = 0; i < P.reeds; i++) {
-      const [x, z] = spot(this.orbitR + 5, this.orbitR + 45);
+      const [x, z] = spot(this.orbitR + 17, this.orbitR + 53);
       reeds(x, z);
     }
 
     for (let i = 0; i < P.ruin; i++) {
-      const [x, z] = spot(this.orbitR + 7, this.orbitR + 46);
+      const [x, z] = spot(this.orbitR + 18, this.orbitR + 54);
       const dir = R() * Math.PI * 2, n = 4 + ((R() * 5) | 0);
       for (let c = 0; c < 3; c++) {
         for (let k = 0; k < n; k++) {
@@ -575,7 +594,7 @@ export class Renderer {
     }
 
     for (let i = 0; i < P.stones; i++) {
-      const [x, z] = spot(this.orbitR + 10, this.orbitR + 60);
+      const [x, z] = spot(this.orbitR + 20, this.orbitR + 66);
       const n = 4 + ((R() * 4) | 0), rr = 3 + R() * 3;
       for (let k = 0; k < n; k++) {
         const a = (k / n) * Math.PI * 2, h = 2.4 + R() * 2.4;
@@ -587,7 +606,7 @@ export class Renderer {
     // Grazing flocks. Four squat blobs and a head reads as a sheep at any range
     // the player will ever see one, and nothing else says "inhabited" so fast.
     for (let i = 0; i < (P.flocks || 0); i++) {
-      const [x, z] = spot(this.orbitR + 8, this.orbitR + 60);
+      const [x, z] = spot(this.orbitR + 19, this.orbitR + 66);
       for (let k = 0; k < 5 + ((R() * 8) | 0); k++) {
         const sx = x + (R() - 0.5) * 12, sz = z + (R() - 0.5) * 12, a = R() * 6;
         push(G.blob, M.pale, sx, 0.62, sz, 0.62, 0.5, 0.44, 0, a, 0);
@@ -599,7 +618,7 @@ export class Renderer {
     }
 
     for (let i = 0; i < (P.woodpile || 0); i++) {
-      const [x, z] = spot(this.orbitR + 6, this.orbitR + 44);
+      const [x, z] = spot(this.orbitR + 18, this.orbitR + 52);
       const a = R() * 6;
       for (let row = 0; row < 3; row++)
         for (let k = 0; k < 4 - row; k++)
@@ -609,7 +628,7 @@ export class Renderer {
     }
 
     for (let i = 0; i < (P.graves || 0); i++) {
-      const [x, z] = spot(this.orbitR + 8, this.orbitR + 50);
+      const [x, z] = spot(this.orbitR + 19, this.orbitR + 58);
       for (let k = 0; k < 5 + ((R() * 7) | 0); k++) {
         const h = 0.7 + R() * 0.6;
         push(G.box, M.stone, x + (R() - 0.5) * 9, h / 2, z + (R() - 0.5) * 9,
