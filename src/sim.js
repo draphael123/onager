@@ -293,6 +293,57 @@ export async function runSim(log = console.log) {
       `dive at 0.6s: ${dived.kills} down / ${dived.broke} broken`);
   }
 
+  await breathe();
+
+  // ---- T11 the reticle lands where the knight lands -----------------------
+  // The preview point-sampled the parabola at 0.075s, which is three metres at
+  // 40 m/s: it skipped clean through a one-block curtain wall and reported the
+  // impact up to three metres late. Each segment is now a swept ball cast of
+  // the knight's real radius. This measures the prediction against the knight's
+  // actual first contact.
+  {
+    const segDist = (p, a, b) => {
+      const abx = b.x - a.x, aby = b.y - a.y, abz = b.z - a.z;
+      const apx = p.x - a.x, apy = p.y - a.y, apz = p.z - a.z;
+      const L = abx * abx + aby * aby + abz * abz;
+      const t = L ? Math.max(0, Math.min(1, (apx * abx + apy * aby + apz * abz) / L)) : 0;
+      return Math.hypot(apx - abx * t, apy - aby * t, apz - abz * t);
+    };
+    let worst = 0, worstAt = '', predicted = 0, tried = 0;
+    for (const [ang, el, pw] of [[N, 20, 0.85], [E, 8, 0.9], [SO, 22, 0.85],
+                                 [0.6, 26, 0.8], [W, 20, 1.0], [N, 40, 0.6]]) {
+      tried++;
+      const g = fresh(6060);
+      g.angle = ang; g.elev = el * Math.PI / 180; g.power = pw;
+      const hit = g.arc().hit;
+      if (!hit) { g.phys.dispose(); continue; }
+      predicted++;
+      g.shoot(ang, el, pw);
+      let contact = null;
+      for (let i = 0; i < 300 && (g.state === S.FLIGHT || g.state === S.SETTLE); i++) {
+        const t0 = g.knight ? { ...g.knight.body.translation() } : null;
+        const v0 = g.knight ? { ...g.knight.body.linvel() } : null;
+        g._tick();
+        if (!contact && g.knight && v0) {
+          const v = g.knight.body.linvel();
+          if (Math.hypot(v.x - v0.x, v.y - v0.y, v.z - v0.z) > 2.5) {
+            const t = g.knight.body.translation();
+            contact = { a: t0, b: { x: t.x, y: t.y, z: t.z } };
+          }
+        }
+      }
+      if (contact) {
+        const e = segDist(hit, contact.a, contact.b);
+        if (e > worst) { worst = e; worstAt = `e${el} p${pw} -> ${hit.kind}`; }
+      }
+      g.phys.dispose();
+    }
+    ok('T11a the preview predicts an impact for every shot', predicted === tried,
+      `${predicted}/${tried}`);
+    ok('T11b and it is where the knight actually lands', worst < 1.0,
+      `worst ${worst.toFixed(2)}m (${worstAt})`);
+  }
+
   const summary = `\n${pass} passed, ${fail} failed`;
   out.push(summary); log(summary);
   return { pass, fail, lines: out };
@@ -302,14 +353,20 @@ export async function runSim(log = console.log) {
 // seeds. If anything in fortress.js changes, RE-SWEEP — these numbers are what
 // make T6 and T7 mean anything, and a fortress edit silently invalidates them.
 //
-//   north  e20 p0.85  gate  3/3      south  e22 p0.85  keep  3/3
-//   east   e8  p0.90  court 2/3      west   nothing, at any elevation or power
+// Re-measured over three seeds after the campaign refactor moved the courtyard
+// post and scaled launch speed to the castle:
 //
-// East is deliberately the tightest: it is a flat punch through a thin wall
-// into a small socket, and it wants the arc preview and a little fine-trim.
+//   north  e20 p0.85   south  e22 p0.85
+//   east   e12 p0.95 -> 2 kills, 4.3 blocks (walk 3/3, courtyard 2/3)
+//   west   nothing worth having, at any elevation or power
+//
+// East's old answer (e8 p0.90) was a pure flat punch and had gone marginal —
+// the knight punched the curtain and then sailed a metre OVER a soldier whose
+// head is only 2.4m off the plinth. At 12 degrees it still breaks the wall and
+// arrives low enough to matter. If the level changes again, RE-SWEEP.
 export const BEST = {
   north: { elev: 20, power: 0.85 },
-  east:  { elev: 8,  power: 0.90 },
+  east:  { elev: 12, power: 0.95 },
   south: { elev: 22, power: 0.85 },
   west:  { elev: 20, power: 1.00 },
 };

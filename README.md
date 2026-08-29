@@ -105,7 +105,8 @@ src/rand.js       seeded stream for anything that affects the simulation
 - **27 assertions green** (`ONAGER.sim()`)
 - Fortress at rest after 5s: 0.29m worst drift, 0 blocks broken, nobody knocked
   out, world asleep
-- Trajectory preview matches actual flight to within **0.7cm**
+- Trajectory preview matches actual flight to within **0.7cm**, and the impact
+  marker lands within **0.44m** of the knight's real first contact
 - Every shot resolves in under **5s**
 - **7.25ms** average frame (desktop) / **7.8ms** (emulated phone), during a live
   collapse at ~380 bodies

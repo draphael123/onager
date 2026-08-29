@@ -108,6 +108,31 @@ destroys instead of stopping dead in the hole it just made.
 
 ---
 
+## The reticle
+
+The preview is exact, not sampled. It used to walk the parabola in 0.075s steps
+and ask "is anything within a knight's radius of this point" — but 0.075s is
+three metres at 40 m/s, so a shot could pass clean through a one-block curtain
+wall between samples and report its landing spot three metres late.
+
+Every segment is now a **swept ball cast of the knight's actual radius**. That
+cannot miss thin geometry, and it hands back the surface normal and the collider
+that was hit, which buys three things:
+
+- the marker lies **on** the surface it hits, oriented to it, instead of lying
+  flat and half-buried in a wall;
+- a plumb line drops from the impact to the ground, because a fixed camera
+  cannot read height off a mark hanging in the air;
+- the marker turns **red when the shot is predicted to reach a soldier**, which
+  is the single most useful thing a reticle in this game can say.
+
+Measured at 0.01–0.44m from the knight's actual first contact, asserted by `T11`.
+The whole preview costs 0.05ms per frame.
+
+⚠ Rapier builds its query pipeline inside `step()`. On a freshly built level
+`castShape` returns null for everything, so `reset()` now steps once before
+anything reads the world — otherwise the preview is blank on the first frame.
+
 ## Presentation
 
 All of this is in service of one question: did that hit feel like anything?
@@ -127,6 +152,13 @@ All of this is in service of one question: did that hit feel like anything?
 - **Target markers** drawn with depth testing off, because two of the garrison
   stand inside the fortress where you cannot see them, and a puzzle whose targets
   are invisible is not a puzzle.
+- **The countryside is instanced.** As individual meshes it cost 800+ draw
+  calls, which is the whole budget on a phone and put a hard ceiling on how much
+  of it there could be. Everything scattered is pushed as a matrix into a pool
+  keyed by (geometry, material) and drawn as ~20 InstancedMeshes, so there are
+  now ~2,600 pieces of scenery for less than the old 800 cost. Each pool is
+  sorted nearest-first, so the quality dial thins the horizon rather than
+  punching holes in the middle of the view.
 - **A siege camp** parented to the machine so it travels round the ring with you:
   tents, a campfire carrying the only warm light in the scene, stores, and the
   knights who have not been fired yet standing in a row — the ammunition counter,
@@ -141,7 +173,7 @@ three seeds:
 |---|---|---|
 | North | 20 deg, 85% | 4 soldiers — the gatehouse comes down together |
 | South | 22 deg, 85% | 3 soldiers — the top storey of the keep drops |
-| East | 8 deg, 90% | 2 soldiers — punched clean through the curtain |
+| East | 12 deg, 95% | 2 soldiers — through the curtain and into the yard |
 | West | 36 deg, 60% | 2 soldiers, and only by shooting clean *past* it |
 
 - 27 assertions green (`ONAGER.sim()`)

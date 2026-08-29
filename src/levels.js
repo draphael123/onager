@@ -27,7 +27,8 @@ export const THEMES = {
     flowers: [0xf2d24b, 0xe8e0d0, 0xd9607a, 0xb98fd6],
     scorch: 0x6b6144, water: 0x3f6f88, plinth: 0x6a6c40,
     mix: { broadleaf: 0.44, conifer: 0.2, dead: 0.0, bush: 0.16, rock: 0.1, tuft: 0.1 },
-    props: { fences: 3, hay: 4, cart: 1, pond: 1, reeds: 10, ruin: 0, stones: 0, birds: 3 },
+    props: { fences: 5, hay: 4, cart: 1, pond: 1, reeds: 10, ruin: 0, stones: 0, birds: 4,
+      flocks: 3, woodpile: 2, graves: 0, windmill: true, chapel: true, jetty: false },
   },
 
   // Late autumn, low sun, stubble and stooks. Warm and gold, and the long
@@ -45,7 +46,8 @@ export const THEMES = {
     flowers: [0xe0a83c, 0xc4622c, 0xe8ddc0],
     scorch: 0x5c4f34, water: 0x4b6a72, plinth: 0x7a6a3e,
     mix: { broadleaf: 0.42, conifer: 0.1, dead: 0.1, bush: 0.14, rock: 0.12, tuft: 0.12 },
-    props: { fences: 4, hay: 7, cart: 2, pond: 0, reeds: 0, ruin: 1, stones: 0, birds: 5 },
+    props: { fences: 6, hay: 11, cart: 3, pond: 1, reeds: 4, ruin: 2, stones: 0, birds: 6,
+      flocks: 2, woodpile: 3, graves: 1, windmill: true, chapel: true, jetty: false },
   },
 
   // Cold marsh at dusk. Blue-grey, standing water, dead timber and ruins. The
@@ -63,7 +65,8 @@ export const THEMES = {
     flowers: [0xc8ccd2, 0x9aa4b0],
     scorch: 0x3c382c, water: 0x39505c, plinth: 0x4a4e3a,
     mix: { broadleaf: 0.12, conifer: 0.16, dead: 0.34, bush: 0.1, rock: 0.16, tuft: 0.12 },
-    props: { fences: 1, hay: 0, cart: 1, pond: 3, reeds: 26, ruin: 3, stones: 4, birds: 4 },
+    props: { fences: 2, hay: 0, cart: 1, pond: 4, reeds: 30, ruin: 4, stones: 4, birds: 5,
+      flocks: 0, woodpile: 1, graves: 3, windmill: false, chapel: true, jetty: true },
   },
 };
 

@@ -86,6 +86,14 @@ export class Game {
     this.acc = 0;
     this.msg = '';
 
+    // One step before anything reads the world. Rapier builds its query
+    // pipeline during step(), so on a freshly built level castShape returns
+    // null for everything and the trajectory preview comes up blank until the
+    // first frame has run.
+    this.phys.step();
+    this.phys.impacts.length = 0;
+    this.phys.breaks.length = 0;
+
     if (this.rd) {
       this.rd.orbitR = this.orbitR;
       this.rd.buildEnvironment(THEMES[L.theme]);
@@ -142,35 +150,56 @@ export class Game {
     this.elev = ELEV_MIN + (ELEV_MAX - ELEV_MIN) * clamp(ang / (Math.PI / 2), 0, 1);
   }
 
-  // Ballistic preview. The knight has zero linear damping, so this parabola is
-  // exactly the path it will fly — the preview never lies.
-  arc(maxPts = 42) {
+  // Ballistic preview, swept properly.
+  //
+  // The knight has zero linear damping, so the parabola is exactly the path it
+  // flies. Finding where that path FIRST meets the castle is the other half,
+  // and point-sampling could not do it: at 40 m/s a 0.075s step is three
+  // metres, so the old preview skipped clean through a one-block curtain wall
+  // and reported the landing spot up to three metres late.
+  //
+  // Each segment is now a swept ball cast of the knight's actual radius, which
+  // is exact — it cannot miss thin geometry, and it hands back the surface
+  // normal so the marker can lie ON the wall it hits instead of flat inside it.
+  arc(maxPts = 64) {
     const p = this.muzzle(), v = this.velocity();
     const g = this.phys.world.gravity.y;
-    const dt = 0.075;
+    const w = this.phys.world, R = this.phys.R;
+    const dt = 0.045;
     const pts = [];
-    let land = null;
+    let hit = null;
     let x = p.x, y = p.y, z = p.z, vx = v.x, vy = v.y, vz = v.z;
-    for (let i = 0; i < maxPts; i++) {
-      x += vx * dt; y += vy * dt + 0.5 * g * dt * dt; z += vz * dt; vy += g * dt;
-      pts.push(new THREE.Vector3(x, y, z));
-      if (y <= KNIGHT_R) { land = new THREE.Vector3(x, 0.06, z); break; }
-      const hit = this._probe(x, y, z);
-      if (hit) { land = hit; break; }
-    }
-    return { pts, land };
-  }
+    if (!this._probeBall) this._probeBall = new R.Ball(KNIGHT_R);
+    const IDQ = { x: 0, y: 0, z: 0, w: 1 };
 
-  _probe(x, y, z) {
-    const w = this.phys.world;
-    if (!w.projectPoint) return null;
-    const pr = w.projectPoint({ x, y, z }, true);
-    if (!pr) return null;
-    if (pr.isInside) return new THREE.Vector3(x, y, z);
-    const q = pr.point;
-    const d = Math.hypot(q.x - x, q.y - y, q.z - z);
-    if (d < KNIGHT_R) return new THREE.Vector3(q.x, q.y, q.z);
-    return null;
+    for (let i = 0; i < maxPts; i++) {
+      const nx = x + vx * dt, ny = y + vy * dt + 0.5 * g * dt * dt, nz = z + vz * dt;
+      const seg = { x: nx - x, y: ny - y, z: nz - z };
+      let h = null;
+      if (w.castShape) {
+        try {
+          h = w.castShape({ x, y, z }, IDQ, seg, this._probeBall, 0, 1, true);
+        } catch (e) { h = null; }
+      }
+      if (h) {
+        const t = h.time_of_impact != null ? h.time_of_impact : (h.toi || 0);
+        const cx = x + seg.x * t, cy = y + seg.y * t, cz = z + seg.z * t;
+        const n = h.normal1 || { x: 0, y: 1, z: 0 };
+        // castShape hands back a Collider OBJECT; the parts map is keyed by
+        // handle. Without this every predicted hit reported as bare ground and
+        // the marker never turned red on a soldier.
+        const ch = h.collider && h.collider.handle != null ? h.collider.handle : h.collider;
+        const part = this.phys.parts.get(ch);
+        pts.push(new THREE.Vector3(cx, cy, cz));
+        hit = { x: cx, y: cy, z: cz, nx: n.x, ny: n.y, nz: n.z,
+          kind: part ? part.kind : 'ground', post: part ? part.post : '' };
+        break;
+      }
+      x = nx; y = ny; z = nz; vy += g * dt;
+      pts.push(new THREE.Vector3(x, y, z));
+      if (y < -6) break;
+    }
+    return { pts, hit };
   }
 
   // ---- firing -------------------------------------------------------------
@@ -452,7 +481,7 @@ export class Game {
     // Trajectory.
     if (this.state === S.AIM && this.knights > 0 && SET.showArc) {
       const a = this.arc();
-      rd.showArc(a.pts, a.land);
+      rd.showArc(a.pts, a.hit);
     } else rd.hideArc();
 
     rd.stepFX(dt);
