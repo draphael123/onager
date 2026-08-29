@@ -3,12 +3,85 @@
 // NOTE: the class is `Sfx`, never `Audio` — a class named Audio shadows the
 // Web API global for the whole module and the error surfaces far downstream.
 
+// Recorded impacts, layered over the synthesis. The synth stays as the fallback
+// and for everything tonal (the launch groan, the knockout sting, the fanfares);
+// the samples carry the physical hits, which is the half synthesis was worst at.
+//
+// Kenney "Impact Sounds", CC0. See assets/audio/LICENCE.txt.
+const BANK = {
+  stoneLight:  ['impactPlate_light', 5],
+  stoneMed:    ['impactPlate_medium', 5],
+  stoneHeavy:  ['impactPlate_heavy', 5],
+  shatter:     ['impactMining', 5],
+  woodLight:   ['impactWood_light', 5],
+  woodMed:     ['impactWood_medium', 5],
+  woodHeavy:   ['impactWood_heavy', 5],
+  splinter:    ['impactPlank_medium', 5],
+  bodyMed:     ['impactSoft_medium', 5],
+  bodyHeavy:   ['impactSoft_heavy', 5],
+  armourLight: ['impactMetal_light', 5],
+  armourMed:   ['impactMetal_medium', 5],
+  armourHeavy: ['impactMetal_heavy', 5],
+  punchMed:    ['impactPunch_medium', 5],
+  punchHeavy:  ['impactPunch_heavy', 5],
+  chip:        ['impactGeneric_light', 5],
+};
+
 export class Sfx {
   constructor() {
     this.ctx = null;
     this.master = null;
     this.enabled = true;
     this.last = {};
+    this.buf = {};              // family -> AudioBuffer[]
+    this.ready = false;
+  }
+
+  // Decoding works on a suspended context, so this can run at boot without
+  // waiting for a gesture. Anything that fires before it finishes falls back
+  // to synthesis rather than going silent.
+  async loadSamples(base = 'assets/audio/') {
+    const c = this.ensure();
+    if (!c) return;
+    const jobs = [];
+    for (const [key, [stem, n]] of Object.entries(BANK)) {
+      this.buf[key] = [];
+      for (let i = 0; i < n; i++) {
+        const url = `${base}${stem}_${String(i).padStart(3, '0')}.ogg`;
+        jobs.push(fetch(url)
+          .then(r => (r.ok ? r.arrayBuffer() : Promise.reject(new Error(r.status))))
+          .then(ab => c.decodeAudioData(ab))
+          .then(b => { this.buf[key][i] = b; })
+          .catch(() => { /* one missing sample must not sink the rest */ }));
+      }
+    }
+    await Promise.all(jobs);
+    this.ready = Object.values(this.buf).some(a => a.some(Boolean));
+    return this.ready;
+  }
+
+  // Play one variant at random, pitched and panned. Returns false if the bank
+  // has not loaded, so callers can fall back.
+  sample(key, { gain = 1, pitch = 1, pan = 0, delay = 0 } = {}) {
+    const c = this.ctx;
+    if (!c || !this.buf[key]) return false;
+    const pool = this.buf[key].filter(Boolean);
+    if (!pool.length) return false;
+    const b = pool[(Math.random() * pool.length) | 0];
+    const src = c.createBufferSource();
+    src.buffer = b;
+    src.playbackRate.value = pitch * (0.94 + Math.random() * 0.12);
+    const g = c.createGain();
+    g.gain.value = gain;
+    let node = src.connect(g);
+    if (c.createStereoPanner) {
+      const p = c.createStereoPanner();
+      p.pan.value = Math.max(-1, Math.min(1, pan));
+      node = g.connect(p);
+    }
+    node.connect(this.master);
+    src.start(c.currentTime + delay);
+    return true;
   }
 
   ensure() {
@@ -55,6 +128,7 @@ export class Sfx {
 
   launch() {
     const c = this.ensure(); if (!c) return;
+    if (this.ready) this.sample('woodHeavy', { gain: 0.75, pitch: 0.72 });
     // Torsion release: a wooden thump plus the skein's low groan.
     const o = c.createOscillator(); o.type = 'triangle';
     o.frequency.setValueAtTime(150, c.currentTime);
@@ -76,10 +150,16 @@ export class Sfx {
     n.connect(f); this._env(f, 0.2, 0.09, 0.4); n.start(); n.stop(c.currentTime + 0.55);
   }
 
-  // Struck stone: inharmonic partials, short. A harmonic stack sounds like a bell.
-  stone(strength) {
+  // Struck stone. A recorded plate impact if the bank is up, otherwise the
+  // synth: inharmonic partials, short, because a harmonic stack rings like a
+  // bell rather than reading as struck rock.
+  stone(strength, pan = 0) {
     const c = this.ensure(); if (!c || !this._gate('stone', 34)) return;
     const s = Math.min(1, strength);
+    if (this.ready) {
+      const key = s > 0.66 ? 'stoneHeavy' : s > 0.3 ? 'stoneMed' : 'stoneLight';
+      if (this.sample(key, { gain: 0.32 + s * 0.6, pitch: 1.14 - s * 0.26, pan })) return;
+    }
     const base = 190 + Math.random() * 130;
     for (const [mul, amp] of [[1, 0.34], [1.71, 0.2], [2.43, 0.13], [3.19, 0.08]]) {
       const o = c.createOscillator(); o.type = 'sine';
@@ -92,15 +172,48 @@ export class Sfx {
     n.connect(f); this._env(f, 0.2 + s * 0.32, 0.001, 0.11); n.start(); n.stop(c.currentTime + 0.2);
   }
 
-  wood(strength) {
+  wood(strength, pan = 0) {
     const c = this.ensure(); if (!c || !this._gate('wood', 30)) return;
     const s = Math.min(1, strength);
+    if (this.ready) {
+      const key = s > 0.66 ? 'woodHeavy' : s > 0.3 ? 'woodMed' : 'woodLight';
+      if (this.sample(key, { gain: 0.34 + s * 0.55, pitch: 1.1 - s * 0.2, pan })) return;
+    }
     const o = c.createOscillator(); o.type = 'square';
     o.frequency.setValueAtTime(420 + Math.random() * 180, c.currentTime);
     o.frequency.exponentialRampToValueAtTime(120, c.currentTime + 0.09);
     const f = c.createBiquadFilter(); f.type = 'lowpass'; f.frequency.value = 2200;
     o.connect(f); this._env(f, 0.22 + s * 0.3, 0.002, 0.13);
     o.start(); o.stop(c.currentTime + 0.24);
+  }
+
+  // A block bursting. Mining hits for stone, splintering planks for timber.
+  shatter(mat, pan = 0) {
+    const c = this.ensure(); if (!c || !this._gate('shatter', 55)) return;
+    if (this.ready) {
+      if (this.sample(mat === 'timber' ? 'splinter' : 'shatter',
+        { gain: 0.6, pitch: 0.88 + Math.random() * 0.3, pan })) return;
+    }
+    this.stone(0.8, pan);
+  }
+
+  // The knight himself landing: armour first, then the body under it.
+  knightHit(strength, pan = 0) {
+    const c = this.ensure(); if (!c) return;
+    const s = Math.min(1, strength);
+    if (this.ready) {
+      const key = s > 0.6 ? 'armourHeavy' : s > 0.3 ? 'armourMed' : 'armourLight';
+      this.sample(key, { gain: 0.4 + s * 0.5, pitch: 1.06 - s * 0.16, pan });
+      this.sample(s > 0.5 ? 'punchHeavy' : 'punchMed',
+        { gain: 0.22 + s * 0.3, pitch: 0.94, pan, delay: 0.012 });
+      return;
+    }
+    this.stone(s, pan);
+  }
+
+  chip(pan = 0) {
+    if (!this._gate('chip', 70)) return;
+    this.sample('chip', { gain: 0.24, pitch: 1.1 + Math.random() * 0.4, pan });
   }
 
   rubble(mass) {
@@ -116,6 +229,20 @@ export class Sfx {
     o.frequency.setValueAtTime(58, c.currentTime);
     o.frequency.exponentialRampToValueAtTime(28, c.currentTime + 0.8);
     this._env(o, 0.34, 0.03, 0.85); o.start(); o.stop(c.currentTime + 1);
+
+    // Real stone scattered over the top of it. A collapse is a lot of separate
+    // landings, so they are staggered rather than stacked on one instant.
+    if (this.ready) {
+      const n = Math.min(7, 2 + (mass / 2 | 0));
+      for (let i = 0; i < n; i++) {
+        this.sample(Math.random() < 0.4 ? 'shatter' : 'stoneMed', {
+          gain: 0.2 + Math.random() * 0.22,
+          pitch: 0.8 + Math.random() * 0.5,
+          pan: (Math.random() - 0.5) * 1.2,
+          delay: 0.03 + Math.random() * 0.55,
+        });
+      }
+    }
   }
 
   bannerDown(index) {
@@ -137,9 +264,13 @@ export class Sfx {
   // A knockout needs its own sound or crushing one reads as nothing. Rising
   // pitch per kill in a shot, and a heavier low thump when they were crushed
   // rather than struck.
-  soldierDown(chain, crushed) {
+  soldierDown(chain, crushed, pan = 0) {
     const c = this.ensure(); if (!c) return;
     const t = c.currentTime;
+    if (this.ready) {
+      this.sample(crushed ? 'bodyHeavy' : 'bodyMed', { gain: 0.62, pitch: 0.9, pan });
+      this.sample('armourMed', { gain: 0.3, pitch: 1.05, pan, delay: 0.02 });
+    }
     const base = 300 * Math.pow(1.18, Math.min(6, chain - 1));
 
     const o = c.createOscillator(); o.type = 'triangle';

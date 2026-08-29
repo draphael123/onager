@@ -40,6 +40,12 @@ const keys = new Set();
     wireMenus();
     loop();
 
+    // Samples decode on a suspended context, so this can run now; anything that
+    // fires before it lands falls back to synthesis rather than going silent.
+    sfx.loadSamples().then(ok => {
+      if (!ok) console.warn('ONAGER: impact samples unavailable, using synthesis');
+    });
+
     window.__OK = true;
     boot.classList.add('gone');
   } catch (e) {

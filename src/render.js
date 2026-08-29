@@ -6,6 +6,23 @@ import { THEMES } from './levels.js';
 
 const UNIT = new THREE.BoxGeometry(1, 1, 1);
 
+// One per knight in the company. Distinct enough to tell apart in a row at the
+// bottom of the screen, and all clearly OURS against the garrison's hot red.
+export const KNIGHT_PALETTES = [
+  { cloth: 0x2f5f8c, plume: 0xe8e2d2, trim: 0xd6b45e, device: 'bar' },
+  { cloth: 0x2b6b52, plume: 0xe0b25c, trim: 0xd8d2c2, device: 'cross' },
+  { cloth: 0x54407e, plume: 0xd9a13c, trim: 0xd6b45e, device: 'bar' },
+  { cloth: 0x1f4f6b, plume: 0xc4622c, trim: 0xb9c0c8, device: 'cross' },
+  { cloth: 0x7a3f5c, plume: 0xe8dcc4, trim: 0xd6b45e, device: 'bar' },
+  { cloth: 0x3d5f2f, plume: 0xd8d2c2, trim: 0xc9a94e, device: 'cross' },
+  { cloth: 0x2d4f7a, plume: 0xc8443a, trim: 0xd8d2c2, device: 'bar' },
+  { cloth: 0x6b4a2a, plume: 0x8fb4d6, trim: 0xd6b45e, device: 'cross' },
+  { cloth: 0x3f3f5e, plume: 0xe0b25c, trim: 0xb9c0c8, device: 'bar' },
+  { cloth: 0x1f6b6b, plume: 0xe8e2d2, trim: 0xd6b45e, device: 'cross' },
+  { cloth: 0x8a4a2a, plume: 0xd8d2c2, trim: 0xc9a94e, device: 'bar' },
+  { cloth: 0x4a3b6b, plume: 0xc4622c, trim: 0xd6b45e, device: 'cross' },
+];
+
 // Warm low sun, cool shadow. Everything else is derived from these two.
 const SUN = 0xffe6bd, SKY_HI = 0x6f8fc4, SKY_LO = 0xd9c0a2, GROUND = 0x6f7a4e;
 
@@ -933,7 +950,17 @@ export class Renderer {
       };
     }
     const set = this._rdMat[p.tint === 'friend' ? 'friend' : 'foe'];
-    const mat = p.rdKind === 'head' ? set.head : p.rdKind === 'torso' ? set.body : set.limb;
+    let mat = p.rdKind === 'head' ? set.head : p.rdKind === 'torso' ? set.body : set.limb;
+    // A friendly body wears the surcoat its owner flew in, so you can tell
+    // which of your knights is lying in the courtyard.
+    if (p.pal && p.rdKind === 'torso') {
+      if (!this._rdPalMat) this._rdPalMat = new Map();
+      if (!this._rdPalMat.has(p.pal.cloth)) {
+        this._rdPalMat.set(p.pal.cloth,
+          new THREE.MeshStandardMaterial({ color: p.pal.cloth, roughness: 0.86 }));
+      }
+      mat = this._rdPalMat.get(p.pal.cloth);
+    }
     const m = new THREE.Mesh(this._rdGeo[p.rdKind] || this._rdGeo.torso, mat);
     if (p.rdKind === 'head') m.scale.setScalar(p.half.x * 2.4);
     else if (p.rdKind === 'torso') m.scale.set(p.half.x * 2.2, p.half.y * 2.1, p.half.z * 2.4);
@@ -989,53 +1016,127 @@ export class Renderer {
   }
 
   // ---- the knight ---------------------------------------------------------
+  //
+  // Every knight in the company is a different man: his own surcoat, plume and
+  // shield device, carried from the row waiting by the machine, through the
+  // flight, to the body he leaves on the field. Six identical blue figures
+  // waiting to be thrown reads as ammunition; six different ones reads as
+  // people, which is the whole reason they are knights and not rocks.
 
-  knightMesh() {
+  knightRig(pal) {
     const g = new THREE.Group();
+    const P = pal || KNIGHT_PALETTES[0];
     const steel = new THREE.MeshStandardMaterial({ color: 0xb9c0c8, roughness: 0.32, metalness: 0.88 });
     const dark = new THREE.MeshStandardMaterial({ color: 0x3d4450, roughness: 0.6, metalness: 0.4 });
-    const cloth = new THREE.MeshStandardMaterial({ color: 0x2f5f8c, roughness: 0.85 });
-    const gold = new THREE.MeshStandardMaterial({ color: 0xd6b45e, roughness: 0.28, metalness: 0.9 });
+    const cloth = new THREE.MeshStandardMaterial({ color: P.cloth, roughness: 0.85 });
+    const trim = new THREE.MeshStandardMaterial({ color: P.trim, roughness: 0.34, metalness: 0.72 });
+    const plumeM = new THREE.MeshStandardMaterial({ color: P.plume, roughness: 0.9 });
 
     const torso = new THREE.Mesh(new THREE.CapsuleGeometry(0.3, 0.34, 4, 10), steel);
     torso.position.y = 0.06; g.add(torso);
     const surcoat = new THREE.Mesh(new THREE.CylinderGeometry(0.31, 0.36, 0.4, 10), cloth);
     surcoat.position.y = -0.12; g.add(surcoat);
 
+    const head = new THREE.Group();
     const helm = new THREE.Mesh(new THREE.CylinderGeometry(0.21, 0.24, 0.32, 9), steel);
-    helm.position.y = 0.52; g.add(helm);
+    helm.position.y = 0.52; head.add(helm);
     const helmTop = new THREE.Mesh(new THREE.SphereGeometry(0.21, 10, 7, 0, Math.PI * 2, 0, Math.PI / 2), steel);
-    helmTop.position.y = 0.68; g.add(helmTop);
+    helmTop.position.y = 0.68; head.add(helmTop);
     const visor = new THREE.Mesh(new THREE.BoxGeometry(0.36, 0.055, 0.06), dark);
-    visor.position.set(0, 0.55, 0.21); g.add(visor);
-    const plume = new THREE.Mesh(new THREE.ConeGeometry(0.09, 0.4, 6),
-      new THREE.MeshStandardMaterial({ color: 0xc8443a, roughness: 0.9 }));
-    plume.position.y = 0.9; g.add(plume);
+    visor.position.set(0, 0.55, 0.21); head.add(visor);
+    const plume = new THREE.Mesh(new THREE.ConeGeometry(0.09, 0.4, 6), plumeM);
+    plume.position.y = 0.9; head.add(plume);
+    g.add(head);
 
-    for (const s of [-1, 1]) {
+    const legs = [];
+    for (const sx of [-1, 1]) {
       const pauldron = new THREE.Mesh(new THREE.SphereGeometry(0.16, 9, 7), steel);
-      pauldron.position.set(s * 0.3, 0.24, 0); g.add(pauldron);
+      pauldron.position.set(sx * 0.3, 0.24, 0); g.add(pauldron);
       const leg = new THREE.Mesh(new THREE.CapsuleGeometry(0.11, 0.26, 3, 7), dark);
-      leg.position.set(s * 0.14, -0.42, 0); g.add(leg);
+      leg.position.set(sx * 0.14, -0.42, 0); g.add(leg); legs.push(leg);
     }
 
-    // Lance — reads the tumble instantly, which a smooth ball never would.
-    const lance = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.085, 1.5, 7),
+    // Lance, in its own group so it can be shouldered or couched.
+    const lanceG = new THREE.Group();
+    const shaft = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.085, 1.5, 7),
       new THREE.MeshStandardMaterial({ color: 0x6b4b2e, roughness: 0.85 }));
-    lance.rotation.z = Math.PI / 2; lance.rotation.y = 0.14;
-    lance.position.set(0.55, 0.12, 0.18); g.add(lance);
+    shaft.rotation.z = Math.PI / 2; shaft.rotation.y = 0.14;
+    shaft.position.set(0.55, 0.12, 0.18); lanceG.add(shaft);
     const tip = new THREE.Mesh(new THREE.ConeGeometry(0.1, 0.3, 7), steel);
-    tip.rotation.z = -Math.PI / 2; tip.position.set(1.42, 0.12, 0.18); g.add(tip);
+    tip.rotation.z = -Math.PI / 2; tip.position.set(1.42, 0.12, 0.18); lanceG.add(tip);
+    const pennon = new THREE.Mesh(new THREE.PlaneGeometry(0.34, 0.18),
+      new THREE.MeshStandardMaterial({ color: P.plume, roughness: 0.9, side: THREE.DoubleSide }));
+    pennon.position.set(1.0, 0.28, 0.18); lanceG.add(pennon);
+    g.add(lanceG);
 
-    const shield = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.6, 0.46), cloth);
-    shield.position.set(-0.34, 0.04, 0); g.add(shield);
-    const boss = new THREE.Mesh(new THREE.SphereGeometry(0.09, 8, 6), gold);
-    boss.position.set(-0.4, 0.06, 0); g.add(boss);
+    const shield = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.5, 0.36), cloth);
+    shield.position.set(-0.36, 0.0, 0.04); shield.rotation.x = 0.12; g.add(shield);
+    const dv = P.device === 'bar'
+      ? new THREE.BoxGeometry(0.03, 0.34, 0.09)
+      : new THREE.BoxGeometry(0.03, 0.1, 0.3);
+    const device = new THREE.Mesh(dv, trim);
+    device.position.set(-0.4, 0.0, 0.04); device.rotation.x = 0.12; g.add(device);
+    const boss = new THREE.Mesh(new THREE.SphereGeometry(0.09, 8, 6), trim);
+    boss.position.set(-0.41, 0.0, 0.04); g.add(boss);
 
     g.traverse(o => { if (o.isMesh) { o.castShadow = true; o.receiveShadow = true; } });
     g.scale.setScalar(0.92);
+    g.userData = { head, legs, lance: lanceG, plume, pal: P, phase: Math.random() * 7 };
+    return g;
+  }
+
+  knightMesh(pal) {
+    const g = this.knightRig(pal);
     this.scene.add(g);
     return g;
+  }
+
+  // Idle for the row waiting their turn: breathing, a slow shift of weight, a
+  // look around, and the man at the front standing to with his lance up.
+  animateWaiting(dt, t) {
+    if (!this.waiting) return;
+    for (let i = 0; i < this.waiting.length; i++) {
+      const k = this.waiting[i];
+      if (!k.visible) continue;
+      const u = k.userData;
+      const ph = u.phase || 0;
+      k.position.y = (u.baseY || 0) + Math.sin(t * 1.5 + ph) * 0.02;
+      k.rotation.z = Math.sin(t * 0.6 + ph) * 0.035;
+      k.rotation.y = (u.baseYaw || 0) + Math.sin(t * 0.4 + ph * 1.7) * 0.12;
+      if (u.head) u.head.rotation.y = Math.sin(t * 0.33 + ph * 2.3) * 0.42;
+      if (u.lance) {
+        const next = i === 0;                       // next up shoulders his lance
+        const want = next ? -1.15 : -0.25 + Math.sin(t * 0.5 + ph) * 0.05;
+        u.lance.rotation.z += (want - u.lance.rotation.z) * Math.min(1, dt * 3);
+      }
+    }
+  }
+
+  // In flight: lance couched along the direction of travel, rolling slowly.
+  // A knight tumbling at random reads as a sack; a knight aimed lance-first
+  // reads as a man who chose this.
+  poseFlying(mesh, vel, dt) {
+    if (!mesh) return;
+    const sp = Math.hypot(vel.x, vel.y, vel.z);
+    if (sp < 0.5) return;
+    if (!this._flyQ) {
+      this._flyQ = new THREE.Quaternion();
+      this._flyM = new THREE.Matrix4();
+      this._flyUp = new THREE.Vector3(0, 1, 0);
+      this._flyRight = new THREE.Vector3();
+      this._flyRoll = 0;
+    }
+    // The rig points its +X down the lance, so aim +X along the velocity.
+    const right = this._flyRight.set(vel.x, vel.y, vel.z).normalize();
+    const up = this._flyUp.clone().addScaledVector(right, -this._flyUp.dot(right));
+    if (up.lengthSq() < 0.001) up.set(0, 0, 1);
+    up.normalize();
+    const fwd = new THREE.Vector3().crossVectors(right, up);
+    this._flyM.makeBasis(right, up, fwd);
+    this._flyQ.setFromRotationMatrix(this._flyM);
+    this._flyRoll += dt * 2.6;
+    mesh.quaternion.copy(
+      new THREE.Quaternion().setFromAxisAngle(right, this._flyRoll).multiply(this._flyQ));
   }
 
   // ---- the launcher -------------------------------------------------------
@@ -1141,22 +1242,10 @@ export class Renderer {
     fire.position.set(-4.4, 0, 0);
     g.add(fire);
 
-    // Ammunition: the knights who have not been fired yet, waiting by the arm.
+    // The company waits by the arm; buildWaiting() fills this once the game
+    // knows how many knights there are and what colours they wear.
     this.waiting = [];
-    for (let i = 0; i < 8; i++) {
-      const k = new THREE.Group();
-      const body = new THREE.Mesh(new THREE.CapsuleGeometry(0.24, 0.34, 3, 8), blue);
-      body.position.y = 0.62; k.add(body);
-      const helm = new THREE.Mesh(new THREE.SphereGeometry(0.19, 9, 6, 0, 7, 0, Math.PI * 0.62), steel);
-      helm.position.y = 1.12; k.add(helm);
-      const lance = new THREE.Mesh(new THREE.CylinderGeometry(0.035, 0.05, 2.0, 5), wood);
-      lance.position.set(0.24, 0.9, 0); lance.rotation.z = -0.16; k.add(lance);
-      k.position.set(-2.6 - (i % 4) * 0.85, 0, -2.0 + ((i / 4) | 0) * 0.95 + (i % 4) * 0.12);
-      k.rotation.y = 1.2 + Math.random() * 0.5;
-      k.traverse(o => { if (o.isMesh) o.castShadow = true; });
-      g.add(k);
-      this.waiting.push(k);
-    }
+    this.campGroup = g;
 
     // Stores.
     for (const [bx, bz, r] of [[-3.2, 2.4, 0], [-3.9, 2.9, 0.5], [-2.4, 3.1, 1.1]]) {
@@ -1498,10 +1587,39 @@ export class Renderer {
     }
   }
 
-  // The waiting knights are the ammunition counter, in the world.
+  // The company, in the colours they will fly in. Built per level because the
+  // knight count changes, and because the man at the front of the queue is the
+  // one you are about to throw — he should be wearing what lands.
+  buildWaiting(pals) {
+    if (!this.campGroup) return;
+    for (const k of this.waiting || []) {
+      this.campGroup.remove(k);
+      k.traverse(o => { if (o.isMesh) { o.geometry.dispose(); o.material.dispose(); } });
+    }
+    this.waiting = [];
+    for (let i = 0; i < pals.length; i++) {
+      const k = this.knightRig(pals[i]);
+      // Two ranks, the front one nearest the machine.
+      const col = i % 4, row = (i / 4) | 0;
+      const x = -2.5 - row * 1.25, z = -1.9 + col * 1.06 + row * 0.26;
+      // The rig's feet sit 0.61 below its origin at 0.92 scale. At 0.86 the
+      // whole company hovered, boots in the air.
+      k.position.set(x, 0.61, z);
+      k.rotation.y = 1.15 + (Math.random() - 0.5) * 0.4;
+      k.userData.baseY = 0.61;
+      k.userData.baseYaw = k.rotation.y;
+      k.userData.phase = i * 1.7 + Math.random();
+      this.campGroup.add(k);
+      this.waiting.push(k);
+    }
+  }
+
+  // The waiting knights are the ammunition counter, in the world. They are
+  // spent from the FRONT, so the row shortens toward the machine.
   setWaiting(n) {
     if (!this.waiting) return;
-    for (let i = 0; i < this.waiting.length; i++) this.waiting[i].visible = i < n;
+    const spent = this.waiting.length - n;
+    for (let i = 0; i < this.waiting.length; i++) this.waiting[i].visible = i >= spent;
   }
 
   // The pop. A soldier leaving the field has to be the loudest thing that

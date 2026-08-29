@@ -60,6 +60,16 @@ arch you undercut, a thin curtain you punch through, a keep whose top storey
 sits on timber joists, and one face with nobody posted behind it that is the
 worst place to stand. See [DESIGN.md](DESIGN.md).
 
+## Sound
+
+Recorded impacts over synthesis. The samples carry the physical hits — stone,
+timber, armour, bodies — panned by where the event happened relative to the line
+you are aiming down. Synthesis carries everything tonal (the torsion release,
+the rumble of a collapse, the knockout sting) and remains the fallback if the
+bank does not load, so the game is never silent.
+
+Kenney's "Impact Sounds", CC0. See [CREDITS.md](CREDITS.md).
+
 ## Harness
 
 Everything runs headless (`renderer = null`). In the browser console:
@@ -96,7 +106,8 @@ src/game.js       state machine, camera, aiming, scoring
 src/physics.js    Rapier wrapper: damage, debris, settle detection
 src/fortress.js   the level
 src/render.js     scene, materials, models, FX
-src/audio.js      WebAudio synthesis (no assets)
+src/audio.js      recorded impacts (Kenney, CC0) layered over WebAudio synthesis
+assets/audio/     80 impact samples, 646KB
 src/sim.js        headless assertions, audit, parameter sweep
 src/rand.js       seeded stream for anything that affects the simulation
 ```

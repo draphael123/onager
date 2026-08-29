@@ -86,6 +86,41 @@ track** — a line of marks directly beneath it — with faint uprights joining 
 two every few points. That is the standard fix for exactly this problem, and it
 is what turns "somewhere over there" into a readable distance.
 
+## Sound
+
+Synthesis got the game a long way and is still doing the tonal work, but it was
+always weakest at the thing that matters most here: the moment something heavy
+meets something solid. Sixteen families of recorded impacts (Kenney, CC0) now
+carry those, chosen by material and strength, pitched and panned per hit:
+
+- stone plates for masonry, mining hits for a block bursting
+- wood for timber, splintering planks when a joist goes
+- armour then the body under it when the knight arrives in person
+- soft impacts for a soldier going down, heavier when crushed
+- a collapse scatters seven of them over half a second rather than stacking
+  them on one instant, because a collapse is a lot of separate landings
+
+Everything is panned by how far the event is to the left or right of the line
+you are aiming down — a castle coming apart in front of you should not arrive
+as a mono blob. Synthesis remains the fallback, so a failed fetch costs polish
+rather than silence.
+
+## The company
+
+Six to nine knights, and each one a different man: his own surcoat, plume and
+shield device, carried from the row waiting by the machine, through the flight,
+to the body he leaves on the field. Identical blue figures waiting to be thrown
+read as ammunition; different ones read as people, which is the whole reason
+they are knights and not rocks.
+
+They idle — breathing, shifting weight, looking around — and the man at the
+front of the queue shoulders his lance, because he is the one you are about to
+throw. The row is spent from the front, so it shortens toward the machine.
+
+In flight the knight is posed **lance couched along his velocity**, rolling
+slowly. He used to inherit the projectile ball's rotation and tumble at random,
+which reads as a sack; aimed lance-first he reads as a man who chose this.
+
 ## Bodies
 
 Casualties leave one. Six jointed bodies — torso, head, two arms, two legs, five

@@ -8,6 +8,7 @@ import { Physics } from './physics.js';
 import { faceAt } from './fortress.js';
 import { LEVELS, THEMES } from './levels.js';
 import { SET } from './settings.js';
+import { KNIGHT_PALETTES } from './render.js';
 
 // Orbit radius is per LEVEL now: a small keep sat at 38 reads as a model on a
 // table and every shot becomes a long blind lob.
@@ -64,6 +65,12 @@ export class Game {
     this.speedMin = SPEED_MIN * k;
     this.speedMax = SPEED_MAX * k;
     this.knightsTotal = this.knightOverride || L.knights;
+    // Who is in the company this siege. Rotated by level so the same castle
+    // does not always field the same men, but stable within a run.
+    this.palettes = [];
+    for (let i = 0; i < this.knightsTotal; i++) {
+      this.palettes.push(KNIGHT_PALETTES[(i + this.levelIdx * 3) % KNIGHT_PALETTES.length]);
+    }
     this.phys = new Physics();
     const b = L.build(this.phys);
     this.banners = b.banners;
@@ -105,6 +112,7 @@ export class Game {
     if (this.rd) {
       this.rd.orbitR = this.orbitR;
       this.rd.buildEnvironment(THEMES[L.theme]);
+      this.rd.buildWaiting(this.palettes);
       for (const p of this.phys.list) this.rd.addPart(p);
       // Hook AFTER the initial build, so these only fire during play.
       this.phys.onAdd = (p) => this.rd.addPart(p);
@@ -240,7 +248,12 @@ export class Game {
     this.killsThisShot = 0;
     this.knightLimp = false;
     if (this.rd) {
-      if (!this.knightMesh) this.knightMesh = this.rd.knightMesh();
+      // Rebuilt each shot: the man leaving the machine wears the colours of the
+      // man who was standing at the front of the row a moment ago.
+      const pal = this.palettes[this.palettes.length - 1 - this.knights];
+      if (this.knightMesh) this.rd.scene.remove(this.knightMesh);
+      this.knightMesh = this.rd.knightMesh(pal);
+      this.knightPal = pal;
       this.knightMesh.visible = true;
       this.rd.hideArc();
       this.rd.armAngle = 1.6;
@@ -301,6 +314,18 @@ export class Game {
     }
   }
 
+  // Rough stereo placement: how far the event is to the left or right of the
+  // line you are aiming down. A castle coming apart in front of you should not
+  // arrive as a mono blob.
+  _panAt(x, z) {
+    const f = this.aimDir();
+    const rx = -f.z, rz = f.x;                 // the aim line's right vector
+    const L = this.launchPos();
+    const dx = x - L.x, dz = z - L.z;
+    const d = Math.hypot(dx, dz) || 1;
+    return clamp(((dx * rx + dz * rz) / d) * 1.6, -1, 1);
+  }
+
   _drain() {
     const P = this.phys;
     if (P.impacts.length) {
@@ -311,7 +336,12 @@ export class Game {
           if (s > 0.55) this.rd.spark(im.x, im.y, im.z, 0.5 + s * 0.6, 3 + (s * 5 | 0));
           this.rd.kick(Math.min(0.5, s * 0.34));
         }
-        if (this.sfx) (im.mat === 'timber' ? this.sfx.wood(s) : this.sfx.stone(s));
+        if (this.sfx) {
+          const pan = this._panAt(im.x, im.z);
+          if (im.knight && s > 0.28) this.sfx.knightHit(s, pan);
+          else if (im.mat === 'timber') this.sfx.wood(s, pan);
+          else this.sfx.stone(s, pan);
+        }
         // Hitstop on a genuinely big hit — it sells the mass of the knight.
         if (s > 0.95) this.hitstop = Math.max(this.hitstop, 0.055);
         // The knight goes limp the moment he arrives. The ball keeps doing the
@@ -321,7 +351,7 @@ export class Game {
           this.knightLimp = true;
           const kv = this.knight.body.linvel();
           const kt = this.knight.body.translation();
-          this.phys.spawnRagdoll(kt.x, kt.y, kt.z, kv, { tint: 'friend' });
+          this.phys.spawnRagdoll(kt.x, kt.y, kt.z, kv, { tint: 'friend', pal: this.knightPal });
           if (this.knightMesh) this.knightMesh.visible = false;
         }
       }
@@ -329,8 +359,9 @@ export class Game {
     }
     if (P.breaks.length) {
       for (const b of P.breaks) {
-        if (b.kind === 'debris') continue;
+        if (b.kind === 'debris') { if (this.sfx) this.sfx.chip(this._panAt(b.x, b.z)); continue; }
         this.broken++;
+        if (this.sfx) this.sfx.shatter(b.mat, this._panAt(b.x, b.z));
         this.breaksThisShot = (this.breaksThisShot || 0) + 1;
         this.score += 8;
         if (this.rd) {
@@ -353,7 +384,7 @@ export class Game {
     this.score += 500 + (crushed ? 150 : 0);
     if (this.rd) this.rd.popSoldier(t.x, t.y, t.z, v);
     this.phys.spawnRagdoll(t.x, t.y, t.z, v, { tint: 'foe' });
-    if (this.sfx) this.sfx.soldierDown(this.killsThisShot, crushed);
+    if (this.sfx) this.sfx.soldierDown(this.killsThisShot, crushed, this._panAt(t.x, t.z));
     // A multi-kill is the best thing that can happen; say so.
     if (this.killsThisShot >= 2) {
       this.msg = `${this.killsThisShot} AT ONCE`;
@@ -507,10 +538,12 @@ export class Game {
 
     // Knight.
     if (this.knight && this.knightMesh) {
-      const t = this.knight.body.translation(), q = this.knight.body.rotation();
+      const t = this.knight.body.translation();
       this.knightMesh.position.set(t.x, t.y, t.z);
-      this.knightMesh.quaternion.set(q.x, q.y, q.z, q.w);
+      const v = this.knight.body.linvel();
+      rd.poseFlying(this.knightMesh, v, dt);
     }
+    rd.animateWaiting(dt, this.tAnim = (this.tAnim || 0) + dt);
 
     // Trajectory.
     if (this.state === S.AIM && this.knights > 0 && SET.showArc) {

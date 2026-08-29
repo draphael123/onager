@@ -218,6 +218,7 @@ export class Physics {
   // to the audit — they are decoration with physics, not structure.
   spawnRagdoll(x, y, z, vel, opts = {}) {
     const tint = opts.tint || 'foe';
+    const pal = opts.pal || null;
     const grp = { parts: [], born: this.time, tint };
     const V = vel || { x: 0, y: 0, z: 0 };
     const jitter = () => (rnd(0, 1) - 0.5) * 3.2;
@@ -235,7 +236,7 @@ export class Physics {
       // system and chew the castle down from the inside.
       const col = this.world.createCollider(cd, body);
       const part = {
-        body, col, fixed: false, kind: 'ragdoll', rdKind, mat: 'soldier', tint,
+        body, col, fixed: false, kind: 'ragdoll', rdKind, mat: 'soldier', tint, pal,
         hp: 1e9, maxHp: 1e9, half: { x: hx, y: hy, z: hz },
         spawnX: x + px, spawnY: y + py, spawnZ: z + pz,
         up0: null, dead: false, mesh: null, debris: true, born: this.time,
@@ -333,7 +334,8 @@ export class Physics {
       const relV = Math.hypot(ax - bx, ay - by, az - bz);
       if (relV < IMPACT_V) return;             // settling, not smashing
 
-      this.impacts.push({ x: at.x, y: at.y, z: at.z, mag, relV,
+      const kn0 = (a && a.kind === 'knight') || (b && b.kind === 'knight');
+      this.impacts.push({ x: at.x, y: at.y, z: at.z, mag, relV, knight: kn0,
         mat: (a && a.kind !== 'knight' ? a.mat : (b ? b.mat : 'block')) });
 
       const bite = Math.min(1, (relV - IMPACT_V) / 6);
