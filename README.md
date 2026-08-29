@@ -107,7 +107,9 @@ src/physics.js    Rapier wrapper: damage, debris, settle detection
 src/fortress.js   the level
 src/render.js     scene, materials, models, FX
 src/audio.js      recorded impacts (Kenney, CC0) layered over WebAudio synthesis
+src/models.js     KayKit characters (CC0), merged and cloned; procedural fallback
 assets/audio/     80 impact samples, 646KB
+assets/models/    Knight, Barbarian and 25 animation clips, 2.5MB
 src/sim.js        headless assertions, audit, parameter sweep
 src/rand.js       seeded stream for anything that affects the simulation
 ```

@@ -434,22 +434,31 @@ Port **5833**. No build step: three.js r170 and Rapier 0.14 are vendored, and
 
 ## On third-party models
 
-The audio came from Kenney (CC0) and was an unambiguous win: recorded impacts do
-something synthesis could not, and they slot in behind an interface that already
-existed.
+I argued against these and was wrong about the constraint, not the risk. The
+risk was that a bought mesh would cost the per-knight identity that had just
+been built. It does not, because KayKit gives the **cape its own SkinnedMesh** —
+so every knight still wears his own colours, and now has a hand-authored idle
+underneath instead of my sine waves.
 
-Character models are a different case, and I did not take them. The knights had
-just become individuals — own surcoat, own plume, own device, an idle, a
-shouldered lance, a couched flight pose — and a fixed imported mesh would have
-cost all of that to gain some polygons. KayKit's rigged characters (the ones
-worth having) also cannot be fetched without a browser session, so they would
-have to be dropped in by hand.
+**KayKit "Adventurers" 2.0, CC0.** The knight for ours, the barbarian tinted red
+for the garrison, and 25 clips on a shared rig. Three things this cost:
 
-If we do want them later, the sane order is: get the files locally, vendor
-GLTFLoader, and swap the GARRISON first — they are simpler figures and their
-readability is a silhouette-and-colour problem that a better mesh helps with. The
-knights should keep their palettes whatever happens, which means any imported
-knight needs separable surcoat/plume materials.
+- **Skinned meshes cannot be cloned with `object.clone()`.** The copy shares the
+  original's skeleton and every instance snaps to the same pose. It goes through
+  `SkeletonUtils.clone()`.
+- **One draw call per body part.** KayKit ships nine meshes for the knight and
+  seven for the barbarian; a field of them was 144 skinned meshes and 1243 draws.
+  They share a skeleton and a material, so they merge — everything but the cape,
+  which has to stay separate to stay tintable. 144 became 27.
+- **A material colour MULTIPLIES its texture.** Tinting the cape over a
+  mid-toned atlas made every knight's cloak the same near-black. The cape is a
+  flat region of the atlas anyway, so it drops the map and shows the colour
+  pure. A whole-body tint keeps its map and uses a lighter colour to land in
+  the right place.
+
+Loading is optional throughout. If the files are missing or slow the procedural
+rigs are still there and the game starts anyway — a game that will not start is
+worse than one that looks plainer.
 
 ## What is not here yet
 

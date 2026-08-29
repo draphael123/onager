@@ -3,11 +3,15 @@
 import * as THREE from '../vendor/three.module.js';
 import { activeQuality, SET } from './settings.js';
 import { THEMES } from './levels.js';
+import { MODELS, spawnCharacter, MODEL_HEIGHT } from './models.js';
 
 const UNIT = new THREE.BoxGeometry(1, 1, 1);
 
 // One per knight in the company. Distinct enough to tell apart in a row at the
 // bottom of the screen, and all clearly OURS against the garrison's hot red.
+// Finished height of a knight in metres, matching what the procedural rig was.
+export const KNIGHT_H = 1.57;
+
 export const KNIGHT_PALETTES = [
   { cloth: 0x2f5f8c, plume: 0xe8e2d2, trim: 0xd6b45e, device: 'bar' },
   { cloth: 0x2b6b52, plume: 0xe0b25c, trim: 0xd8d2c2, device: 'cross' },
@@ -877,6 +881,29 @@ export class Renderer {
   // hot red against tan masonry and green field. The player's knight is blue —
   // you should never have to work out which figure is yours.
   _soldierMesh(p) {
+    // The garrison gets the KayKit barbarian, tinted hot red so they still read
+    // as targets from thirty metres — readability first, likeness second.
+    if (MODELS.ready) {
+      const g = new THREE.Group();
+      const m = spawnCharacter('foe', { bodyTint: 0xff7a5e });
+      m.scale.setScalar((p.half.y * 2) / MODEL_HEIGHT);
+      m.position.y = -p.half.y;         // the mesh stands on its origin
+      g.add(m);
+      const mixer = new THREE.AnimationMixer(m);
+      const clip = MODELS.clips[Math.random() < 0.5 ? 'Idle_A' : 'Idle_B'];
+      if (clip) {
+        const a = mixer.clipAction(clip);
+        a.play();
+        a.time = Math.random() * clip.duration;
+      }
+      g.userData = { mixer };
+      this.scene.add(g);
+      p.mesh = g;
+      this.meshes.set(p, g);
+      this._addMarker(p);
+      this.syncPart(p);
+      return;
+    }
     const g = new THREE.Group();
     const cloth = new THREE.MeshStandardMaterial({ color: 0xc4402f, roughness: 0.86 });
     const steel = new THREE.MeshStandardMaterial({ color: 0x9aa3ad, roughness: 0.38, metalness: 0.8 });
@@ -918,10 +945,15 @@ export class Renderer {
     p.mesh = g;
     this.meshes.set(p, g);
 
-    // Target marker. Two of the garrison stand inside the fortress where you
-    // cannot see them at all, and a puzzle you can't see the targets of is not
-    // a puzzle. Drawn with depthTest off so it reads through masonry, and with
-    // size attenuation off so it stays the same size at any range.
+    this._addMarker(p);
+    this.syncPart(p);
+  }
+
+  // Target marker. Two of the garrison stand inside the fortress where you
+  // cannot see them at all, and a puzzle whose targets are invisible is not a
+  // puzzle. Drawn with depthTest off so it reads through masonry, and with size
+  // attenuation off so it stays the same size at any range.
+  _addMarker(p) {
     const mk = new THREE.Sprite(new THREE.SpriteMaterial({
       map: markerTex(), color: 0xff6a4a, transparent: true, opacity: 0.92,
       depthTest: false, depthWrite: false, sizeAttenuation: false, fog: false }));
@@ -929,8 +961,6 @@ export class Renderer {
     mk.renderOrder = 20;
     this.scene.add(mk);
     p.marker = mk;
-
-    this.syncPart(p);
   }
 
   // Ragdoll limbs. Red surcoat for the garrison, blue for your own knights, so
@@ -995,8 +1025,13 @@ export class Renderer {
     }
   }
 
-  syncAll(phys) {
-    for (const p of phys.list) if (p.mesh) this.syncPart(p);
+  syncAll(phys, dt = 0) {
+    for (const p of phys.list) {
+      if (!p.mesh) continue;
+      this.syncPart(p);
+      const u = p.mesh.userData;
+      if (dt && u && u.mixer) u.mixer.update(dt);
+    }
   }
 
   dropPart(p) {
@@ -1023,7 +1058,37 @@ export class Renderer {
   // waiting to be thrown reads as ammunition; six different ones reads as
   // people, which is the whole reason they are knights and not rocks.
 
+  // A knight. The KayKit mesh when it has loaded, the procedural rig when it
+  // has not — same interface either way, so nothing downstream cares.
+  //
+  // Both versions put the rig's ORIGIN at mid-body with the feet 0.61 below,
+  // because that is the convention everything that positions a knight already
+  // assumes. The bought mesh has its origin at the feet, so it is offset.
   knightRig(pal) {
+    const P = pal || KNIGHT_PALETTES[0];
+    if (MODELS.ready) {
+      const g = new THREE.Group();
+      const m = spawnCharacter('knight', { capeTint: P.cloth });
+      const sc = KNIGHT_H / MODEL_HEIGHT;
+      m.scale.setScalar(sc);
+      m.position.y = -0.61;
+      m.rotation.y = Math.PI / 2;        // the mesh faces +Z; the rig faces +X
+      g.add(m);
+      const mixer = new THREE.AnimationMixer(m);
+      const clip = MODELS.clips[Math.random() < 0.5 ? 'Idle_A' : 'Idle_B'] || MODELS.clips['Idle_A'];
+      let action = null;
+      if (clip) {
+        action = mixer.clipAction(clip);
+        action.play();
+        action.time = Math.random() * clip.duration;   // not a drill squad
+      }
+      g.userData = { model: m, mixer, action, pal: P, phase: Math.random() * 7 };
+      return g;
+    }
+    return this._proceduralKnight(P);
+  }
+
+  _proceduralKnight(pal) {
     const g = new THREE.Group();
     const P = pal || KNIGHT_PALETTES[0];
     const steel = new THREE.MeshStandardMaterial({ color: 0xb9c0c8, roughness: 0.32, metalness: 0.88 });
@@ -1101,10 +1166,31 @@ export class Renderer {
       if (!k.visible) continue;
       const u = k.userData;
       const ph = u.phase || 0;
-      k.position.y = (u.baseY || 0) + Math.sin(t * 1.5 + ph) * 0.02;
-      k.rotation.z = Math.sin(t * 0.6 + ph) * 0.035;
-      k.rotation.y = (u.baseYaw || 0) + Math.sin(t * 0.4 + ph * 1.7) * 0.12;
-      if (u.head) u.head.rotation.y = Math.sin(t * 0.33 + ph * 2.3) * 0.42;
+      if (u.mixer) {
+        // A hand-authored idle beats anything I can fake with sine waves; all
+        // that is left to do here is stop the row looking like a drill squad.
+        u.mixer.update(dt);
+        k.rotation.y = (u.baseYaw || 0) + Math.sin(t * 0.22 + ph) * 0.06;
+        if (this._cheer > 0 && u.action && !u.cheering) {
+          const c = MODELS.clips['Interact'] || MODELS.clips['Throw'];
+          if (c) {
+            u.cheering = u.mixer.clipAction(c);
+            u.cheering.setLoop(THREE.LoopOnce, 1);
+            u.cheering.clampWhenFinished = false;
+            u.cheering.reset().play();
+            u.action.crossFadeTo(u.cheering, 0.15, false);
+          }
+        } else if (this._cheer <= 0 && u.cheering) {
+          u.action.reset().play();
+          u.cheering.crossFadeTo(u.action, 0.25, false);
+          u.cheering = null;
+        }
+      } else {
+        k.position.y = (u.baseY || 0) + Math.sin(t * 1.5 + ph) * 0.02;
+        k.rotation.z = Math.sin(t * 0.6 + ph) * 0.035;
+        k.rotation.y = (u.baseYaw || 0) + Math.sin(t * 0.4 + ph * 1.7) * 0.12;
+        if (u.head) u.head.rotation.y = Math.sin(t * 0.33 + ph * 2.3) * 0.42;
+      }
       if (u.lance) {
         const next = k.visible && this._firstVisible === i;
         let want = next ? -1.15 : -0.25 + Math.sin(t * 0.5 + ph) * 0.05;
@@ -1126,6 +1212,7 @@ export class Renderer {
   // reads as a man who chose this.
   poseFlying(mesh, vel, dt) {
     if (!mesh) return;
+    if (mesh.userData && mesh.userData.mixer) mesh.userData.mixer.update(dt);
     const sp = Math.hypot(vel.x, vel.y, vel.z);
     if (sp < 0.5) return;
     if (!this._flyQ) {
@@ -1143,7 +1230,7 @@ export class Renderer {
     const fwd = new THREE.Vector3().crossVectors(right, up);
     this._flyM.makeBasis(right, up, fwd);
     this._flyQ.setFromRotationMatrix(this._flyM);
-    this._flyRoll += dt * 2.6;
+    this._flyRoll += dt * (mesh.userData && mesh.userData.mixer ? 1.5 : 2.6);
     mesh.quaternion.copy(
       new THREE.Quaternion().setFromAxisAngle(right, this._flyRoll).multiply(this._flyQ));
   }

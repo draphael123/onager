@@ -522,7 +522,7 @@ export class Game {
   render(dt) {
     if (!this.rd) return;
     const rd = this.rd;
-    rd.syncAll(this.phys);
+    rd.syncAll(this.phys, dt);
     rd.setSunFrom(this.angle);
 
     // Launcher pose.

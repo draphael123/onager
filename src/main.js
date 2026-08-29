@@ -7,6 +7,7 @@ import { Game, S } from './game.js';
 import { LEVELS, loadProgress, saveProgress } from './levels.js';
 import { runSim, sweep, sweepAll, audit, bot, reachability, setSimLevel, FACE_ANGLE, BEST } from './sim.js';
 import { SET, loadSettings, saveSettings, applySettings, activeQualityName, activeQuality } from './settings.js';
+import { loadModels, MODELS, listClips, spawnCharacter } from './models.js';
 
 let prog = loadProgress();
 
@@ -42,6 +43,13 @@ const keys = new Set();
 
     // Samples decode on a suspended context, so this can run now; anything that
     // fires before it lands falls back to synthesis rather than going silent.
+    // Characters are optional: if they fail we keep the procedural rigs, so
+    // the game starts either way.
+    loadModels().then(ok => {
+      if (ok && game) { game.reset(); buildHud(); }
+      else console.warn('ONAGER: using procedural character rigs');
+    });
+
     sfx.loadSamples().then(ok => {
       if (!ok) console.warn('ONAGER: impact samples unavailable, using synthesis');
     });
@@ -552,5 +560,6 @@ window.ONAGER = {
   level(i) { startLevel(i); },
   title() { toTitle(); },
   sim: runSim, sweep, sweepAll, audit, bot, reachability, setSimLevel, LEVELS, FACE_ANGLE, BEST,
+  MODELS, listClips, spawnCharacter,
   pause(on = true) { paused = on; return paused; },
 };
