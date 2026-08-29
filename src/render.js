@@ -1095,6 +1095,7 @@ export class Renderer {
   // look around, and the man at the front standing to with his lance up.
   animateWaiting(dt, t) {
     if (!this.waiting) return;
+    this._firstVisible = this.waiting.findIndex(k => k.visible);
     for (let i = 0; i < this.waiting.length; i++) {
       const k = this.waiting[i];
       if (!k.visible) continue;
@@ -1105,11 +1106,19 @@ export class Renderer {
       k.rotation.y = (u.baseYaw || 0) + Math.sin(t * 0.4 + ph * 1.7) * 0.12;
       if (u.head) u.head.rotation.y = Math.sin(t * 0.33 + ph * 2.3) * 0.42;
       if (u.lance) {
-        const next = i === 0;                       // next up shoulders his lance
-        const want = next ? -1.15 : -0.25 + Math.sin(t * 0.5 + ph) * 0.05;
-        u.lance.rotation.z += (want - u.lance.rotation.z) * Math.min(1, dt * 3);
+        const next = k.visible && this._firstVisible === i;
+        let want = next ? -1.15 : -0.25 + Math.sin(t * 0.5 + ph) * 0.05;
+        if (this._cheer > 0) want = -1.5 - Math.sin(t * 9 + ph) * 0.18;
+        u.lance.rotation.z += (want - u.lance.rotation.z) * Math.min(1, dt * 6);
+      }
+      // Walk into the slot ahead when the row closes up.
+      if (u.tx != null) {
+        const kx = Math.min(1, dt * 2.6);
+        k.position.x += (u.tx - k.position.x) * kx;
+        k.position.z += (u.tz - k.position.z) * kx;
       }
     }
+    if (this._cheer > 0) this._cheer = Math.max(0, this._cheer - dt);
   }
 
   // In flight: lance couched along the direction of travel, rolling slowly.
@@ -1609,6 +1618,8 @@ export class Renderer {
       k.userData.baseY = 0.61;
       k.userData.baseYaw = k.rotation.y;
       k.userData.phase = i * 1.7 + Math.random();
+      k.userData.idx = i;
+      k.userData.tx = x; k.userData.tz = z;
       this.campGroup.add(k);
       this.waiting.push(k);
     }
@@ -1619,7 +1630,24 @@ export class Renderer {
   setWaiting(n) {
     if (!this.waiting) return;
     const spent = this.waiting.length - n;
-    for (let i = 0; i < this.waiting.length; i++) this.waiting[i].visible = i >= spent;
+    for (let i = 0; i < this.waiting.length; i++) {
+      const k = this.waiting[i];
+      k.visible = i >= spent;
+      // The row closes up. A gap where a man used to stand is worse than no
+      // row at all — animateWaiting() walks them into the new slot.
+      const slot = i - spent;
+      if (slot >= 0) {
+        const col = slot % 4, row = (slot / 4) | 0;
+        k.userData.tx = -2.5 - row * 1.25;
+        k.userData.tz = -1.9 + col * 1.06 + row * 0.26;
+      }
+    }
+  }
+
+  // A cheer from the company: lances up for a moment. Called when one of the
+  // garrison goes down, so the men behind you react to the thing you just did.
+  cheer(strength = 1) {
+    this._cheer = Math.min(1.6, (this._cheer || 0) + 0.9 * strength);
   }
 
   // The pop. A soldier leaving the field has to be the loudest thing that

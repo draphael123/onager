@@ -115,7 +115,9 @@ they are knights and not rocks.
 
 They idle — breathing, shifting weight, looking around — and the man at the
 front of the queue shoulders his lance, because he is the one you are about to
-throw. The row is spent from the front, so it shortens toward the machine.
+throw. The row is spent from the front and then **closes up**: a gap where a man
+used to stand is worse than no row at all. When one of the garrison goes down,
+the company raises their lances.
 
 In flight the knight is posed **lance couched along his velocity**, rolling
 slowly. He used to inherit the projectile ball's rotation and tumble at random,
@@ -429,6 +431,25 @@ python onager/serve.py 5833
 
 Port **5833**. No build step: three.js r170 and Rapier 0.14 are vendored, and
 `rapier.es.js` carries its own wasm inline.
+
+## On third-party models
+
+The audio came from Kenney (CC0) and was an unambiguous win: recorded impacts do
+something synthesis could not, and they slot in behind an interface that already
+existed.
+
+Character models are a different case, and I did not take them. The knights had
+just become individuals — own surcoat, own plume, own device, an idle, a
+shouldered lance, a couched flight pose — and a fixed imported mesh would have
+cost all of that to gain some polygons. KayKit's rigged characters (the ones
+worth having) also cannot be fetched without a browser session, so they would
+have to be dropped in by hand.
+
+If we do want them later, the sane order is: get the files locally, vendor
+GLTFLoader, and swap the GARRISON first — they are simpler figures and their
+readability is a silhouette-and-colour problem that a better mesh helps with. The
+knights should keep their palettes whatever happens, which means any imported
+knight needs separable surcoat/plume materials.
 
 ## What is not here yet
 

@@ -382,7 +382,7 @@ export class Game {
     this.killsThisShot = (this.killsThisShot || 0) + 1;
     const crushed = how !== 'struck';
     this.score += 500 + (crushed ? 150 : 0);
-    if (this.rd) this.rd.popSoldier(t.x, t.y, t.z, v);
+    if (this.rd) { this.rd.popSoldier(t.x, t.y, t.z, v); this.rd.cheer(this.killsThisShot); }
     this.phys.spawnRagdoll(t.x, t.y, t.z, v, { tint: 'foe' });
     if (this.sfx) this.sfx.soldierDown(this.killsThisShot, crushed, this._panAt(t.x, t.z));
     // A multi-kill is the best thing that can happen; say so.
