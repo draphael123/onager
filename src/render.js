@@ -354,8 +354,11 @@ export class Renderer {
     p.tier = 0;
     const m = new THREE.Mesh(UNIT, this.pick(p.matName, p.matIdx, 0));
     m.scale.set(p.half.x * 2, p.half.y * 2, p.half.z * 2);
-    m.castShadow = p.kind !== 'plinth';
-    m.receiveShadow = true;
+    // Debris is small, numerous and short-lived; making it cast shadows adds a
+    // hundred-odd extra draws to the shadow pass at exactly the moment the
+    // frame is already busiest.
+    m.castShadow = p.kind !== 'plinth' && p.kind !== 'debris';
+    m.receiveShadow = p.kind !== 'debris';
     this.scene.add(m);
     p.mesh = m;
     this.meshes.set(p, m);

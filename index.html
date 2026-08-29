@@ -193,20 +193,34 @@
   body.lefty #tcL{left:auto;right:calc(90px + env(safe-area-inset-right))}
   body.lefty #tcR{left:auto;right:calc(16px + env(safe-area-inset-right))}
   body.lefty #tcDive{right:auto;left:calc(16px + env(safe-area-inset-left))}
-  #gear{position:fixed;top:calc(14px + env(safe-area-inset-top));
-    right:calc(14px + env(safe-area-inset-right));z-index:24;width:34px;height:34px;
+  #gear{position:fixed;bottom:calc(24px + env(safe-area-inset-bottom));
+    left:50%;transform:translateX(-50%);z-index:24;width:34px;height:34px;
     border-radius:50%;background:rgba(20,18,28,.42);border:1px solid rgba(233,226,210,.16);
     color:#cbbfa6;cursor:pointer;font-size:15px;display:none;align-items:center;
     justify-content:center;pointer-events:auto;transition:all .15s}
   body.playing #gear{display:flex}
+  @media (min-width:641px){ #gear{bottom:auto;left:auto;transform:none;
+    top:calc(14px + env(safe-area-inset-top));right:calc(14px + env(safe-area-inset-right))} }
   #gear:hover{background:rgba(224,178,92,.85);color:#1b1a24;border-color:#e0b25c}
 
   body.pregame #hud,body.pregame #compass,body.pregame #keys,body.pregame #touch{
     opacity:0;pointer-events:none}
 
+  /* Nine knight pips plus nine garrison pips plus two labels plus the gear do
+     not fit across 375px — the garrison row ran off the edge and under the
+     gear. Narrow screens get numerals instead. */
+  .num{display:none;font-size:19px;letter-spacing:.06em;color:#e9e2d2;
+    font-variant-numeric:tabular-nums;line-height:1}
+  .num i{font-style:normal;color:#6b6479;font-size:13px}
+  #soldiersNum{text-align:right;color:#e08a78}
+
   @media (max-width:640px){ #keys{display:none} .cseg{width:40px}
     #hud{padding:max(12px,env(safe-area-inset-top)) 12px 12px}
-    .kpip{width:8px;height:16px} .spip{width:10px;height:16px}
+    #knights,#soldiers{display:none}
+    .num{display:block}
+    #banners{margin-top:5px}
+    .bpip{width:8px;height:11px}
+    #facewrap{padding:0 6px}
     #face{font-size:14px} #facesub{font-size:10px}
     #bottom{padding-bottom:96px}
     #compass{bottom:110px}
@@ -222,6 +236,7 @@
     <div>
       <div class="lbl">Knights</div>
       <div id="knights"></div>
+      <div class="num" id="knightsNum"></div>
     </div>
     <div id="facewrap">
       <div id="face">&mdash;</div>
@@ -230,6 +245,7 @@
     <div>
       <div class="lbl" style="text-align:right">Garrison</div>
       <div id="soldiers"></div>
+      <div class="num" id="soldiersNum"></div>
       <div id="banners" title="standards taken"></div>
     </div>
   </div>

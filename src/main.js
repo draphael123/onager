@@ -86,6 +86,10 @@ function syncHud(dt) {
     spips[i].classList.toggle('down', i < game.soldiersDown);
   for (let i = 0; i < bpips.length; i++)
     bpips[i].classList.toggle('down', game.banners[i].up0 === 0);
+  // Narrow screens show these instead of the pip rows.
+  $('knightsNum').innerHTML = `${game.knights}<i>/${game.knightsTotal}</i>`;
+  $('soldiersNum').innerHTML =
+    `${game.soldiersTotal - game.soldiersDown}<i>/${game.soldiersTotal}</i>`;
 
   const f = game.face();
   $('face').textContent = f.name;
