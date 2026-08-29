@@ -1,0 +1,320 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<meta name="theme-color" content="#1b1a24">
+<meta name="description" content="ONAGER — pick your face, then throw a knight at it.">
+<title>ONAGER</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' fill='%231b1a24'/><path d='M5 26h22M8 26V14h6v12M18 26V9h6v17' stroke='%23e0b25c' stroke-width='2' fill='none' stroke-linejoin='round'/><circle cx='11' cy='6' r='3' fill='%23e0b25c'/></svg>">
+<style>
+  *{margin:0;padding:0;box-sizing:border-box}
+  html,body{
+    width:100%;height:100%;overflow:hidden;background:#0e0d14;color:#e9e2d2;
+    font-family:"Iowan Old Style","Palatino Linotype",Palatino,Georgia,serif;
+    -webkit-font-smoothing:antialiased;-webkit-tap-highlight-color:transparent;
+    user-select:none;-webkit-user-select:none;overscroll-behavior:none;touch-action:none;
+  }
+  #stage{position:fixed;inset:0;display:block;width:100%;height:100%;touch-action:none;cursor:crosshair}
+  #band{width:100%;height:100%}
+
+  /* ---------- boot ---------- */
+  #boot{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;
+    flex-direction:column;gap:16px;background:#0e0d14;z-index:90;transition:opacity .6s ease;
+    text-align:center;padding:24px}
+  #boot.gone{opacity:0;pointer-events:none}
+  #boot h1{font-size:clamp(30px,8vw,64px);letter-spacing:.4em;font-weight:400;color:#e0b25c;text-indent:.4em}
+  #boot p{font-size:12px;letter-spacing:.24em;color:#6b6479;text-transform:uppercase}
+  #boot .err{color:#d9603f;letter-spacing:.02em;text-transform:none;
+    font-family:ui-monospace,Menlo,Consolas,monospace;font-size:12px;max-width:74ch;line-height:1.7}
+  .spark{width:6px;height:6px;border-radius:50%;background:#e0b25c;
+    animation:pulse 1.5s ease-in-out infinite;box-shadow:0 0 16px #e0b25c}
+  @keyframes pulse{0%,100%{opacity:.15;transform:scale(.7)}50%{opacity:1;transform:scale(1.3)}}
+
+  /* ---------- hud ---------- */
+  #hud{position:fixed;inset:0;pointer-events:none;z-index:20;
+    padding:max(18px,env(safe-area-inset-top)) 20px 20px;
+    display:flex;flex-direction:column;justify-content:space-between}
+  .hrow{display:flex;justify-content:space-between;align-items:flex-start;gap:20px}
+  .lbl{font-size:9px;letter-spacing:.26em;text-transform:uppercase;color:#7d7590;margin-bottom:6px}
+
+  #knights{display:flex;gap:7px;align-items:center}
+  .kpip{width:11px;height:22px;background:#e0b25c;
+    clip-path:polygon(50% 0,100% 24%,100% 76%,50% 100%,0 76%,0 24%);
+    transition:opacity .25s,transform .25s}
+  .kpip.spent{opacity:.16;transform:scale(.7)}
+
+  /* Soldiers are the objective, so they get the loud pip. */
+  #soldiers{display:flex;gap:6px;align-items:center;justify-content:flex-end}
+  .spip{width:13px;height:21px;background:#c4402f;
+    clip-path:polygon(50% 0,74% 13%,74% 34%,100% 52%,100% 100%,0 100%,0 52%,26% 34%,26% 13%);
+    transition:opacity .3s,transform .35s,background .3s}
+  .spip.down{opacity:.2;background:#4a4458;transform:translateY(6px) rotate(76deg)}
+  #banners{display:flex;gap:6px;align-items:center;justify-content:flex-end;margin-top:7px}
+  .bpip{width:9px;height:12px;background:#8a6a4e;
+    clip-path:polygon(0 0,100% 0,100% 100%,50% 74%,0 100%);
+    transition:opacity .3s,transform .3s,background .3s}
+  .bpip.down{opacity:.9;background:#e0b25c}
+
+  #facewrap{text-align:center;flex:1}
+  #face{font-size:clamp(15px,2.4vw,21px);letter-spacing:.2em;text-transform:uppercase;color:#e9e2d2}
+  #facesub{font-size:11px;letter-spacing:.08em;color:#8b83a0;margin-top:5px;min-height:15px}
+
+  /* ---------- drag band ---------- */
+  /* The slingshot had no visual anchor at all: you dragged in empty space and
+     only the arm moved, 30 metres away. The band is the cursor. */
+  #band{position:fixed;inset:0;z-index:22;pointer-events:none;opacity:0;
+    transition:opacity .12s}
+  #band.on{opacity:1}
+  #band .cord{stroke:#e0b25c;stroke-width:2.5;stroke-linecap:round;
+    filter:drop-shadow(0 0 6px rgba(224,178,92,.55))}
+  #band .anchor{fill:none;stroke:rgba(233,226,210,.4);stroke-width:1.5}
+  #band .gauge{fill:none;stroke-width:5;stroke-linecap:round;
+    transform:rotate(-90deg);transform-origin:center;transition:stroke .12s}
+  #band .knob{stroke:#fff;stroke-width:2}
+  #readout{position:fixed;z-index:23;pointer-events:none;opacity:0;
+    transition:opacity .12s;font-size:12px;letter-spacing:.14em;color:#e9e2d2;
+    text-shadow:0 2px 8px rgba(0,0,0,.75);white-space:nowrap;
+    font-variant-numeric:tabular-nums;transform:translate(18px,-30px)}
+  #readout.on{opacity:1}
+  #readout b{color:#e0b25c;font-weight:400}
+
+  #bottom{display:flex;flex-direction:column;align-items:center;gap:10px}
+  #power{width:min(300px,52vw);height:5px;background:rgba(233,226,210,.14);border-radius:3px;
+    overflow:hidden;opacity:0;transition:opacity .18s}
+  #power.on{opacity:1}
+  #powerfill{height:100%;width:0%;background:linear-gradient(90deg,#7fa86a,#e0b25c 55%,#c8443a)}
+  #hint{font-size:12px;letter-spacing:.12em;color:#8b83a0;text-align:center;min-height:17px;
+    transition:opacity .3s}
+
+  /* ---------- compass ---------- */
+  #compass{position:fixed;left:50%;transform:translateX(-50%);bottom:76px;z-index:19;
+    display:flex;pointer-events:none;opacity:.9}
+  .cseg{width:64px;height:3px;background:rgba(233,226,210,.14);margin:0 3px;border-radius:2px;
+    transition:background .25s,height .25s}
+  .cseg.on{background:#e0b25c;height:5px}
+
+  /* ---------- cards ---------- */
+  #card{position:fixed;inset:0;display:none;align-items:center;justify-content:center;z-index:40;
+    background:rgba(14,13,20,.82);backdrop-filter:blur(7px);flex-direction:column;gap:18px;
+    text-align:center;padding:28px}
+  #card.on{display:flex;animation:fade .5s ease}
+  @keyframes fade{from{opacity:0}to{opacity:1}}
+  #cardTitle{font-size:clamp(30px,7vw,58px);letter-spacing:.24em;color:#e0b25c;text-indent:.24em}
+  #cardSub{font-size:13px;letter-spacing:.14em;color:#8b83a0;line-height:2}
+  #cardBtn{pointer-events:auto;margin-top:8px;background:none;border:1px solid #e0b25c;color:#e0b25c;
+    font:inherit;font-size:12px;letter-spacing:.24em;text-transform:uppercase;padding:12px 30px;
+    cursor:pointer;transition:background .2s,color .2s}
+  #cardBtn:hover{background:#e0b25c;color:#1b1a24}
+
+  #keys{position:fixed;right:20px;bottom:20px;z-index:19;font-size:11px;letter-spacing:.06em;
+    color:#8b8399;text-align:right;line-height:1.9;pointer-events:none;
+    text-shadow:0 1px 3px rgba(0,0,0,.55)}
+  #keys b{color:#d6cfe4;font-weight:400;font-family:ui-monospace,Menlo,Consolas,monospace}
+
+  /* ---------- title ---------- */
+  #title{position:fixed;inset:0;z-index:60;display:flex;flex-direction:column;
+    align-items:center;justify-content:space-between;text-align:center;
+    padding:clamp(28px,9vh,80px) 24px clamp(34px,10vh,90px);
+    background:radial-gradient(ellipse at 50% 52%,rgba(14,13,20,0) 22%,rgba(14,13,20,.5) 62%,rgba(14,13,20,.86) 100%);
+    transition:opacity .55s ease}
+  #title.gone{opacity:0;pointer-events:none}
+  #title h1{font-size:clamp(46px,12vw,116px);letter-spacing:.34em;font-weight:400;
+    color:#f0d9a8;text-indent:.34em;text-shadow:0 6px 34px rgba(0,0,0,.7);line-height:1}
+  #title .tag{margin-top:14px;font-size:clamp(12px,2.2vw,15px);letter-spacing:.2em;
+    color:#cbbfa6;text-shadow:0 2px 12px rgba(0,0,0,.8)}
+  #title .rule{width:min(320px,60vw);height:1px;background:linear-gradient(90deg,
+    transparent,rgba(224,178,92,.65),transparent);margin:18px auto 0}
+  #titleTop{display:flex;flex-direction:column;align-items:center}
+  #titleBtns{display:flex;gap:12px;flex-wrap:wrap;justify-content:center}
+  .tbtn{pointer-events:auto;background:rgba(14,13,20,.45);border:1px solid rgba(224,178,92,.65);
+    color:#e0b25c;font:inherit;font-size:13px;letter-spacing:.24em;text-transform:uppercase;
+    padding:14px 34px;cursor:pointer;transition:background .18s,color .18s,transform .18s;
+    backdrop-filter:blur(3px)}
+  .tbtn:hover{background:#e0b25c;color:#1b1a24;transform:translateY(-1px)}
+  .tbtn.ghost{border-color:rgba(233,226,210,.3);color:#cbbfa6}
+  .tbtn.ghost:hover{background:rgba(233,226,210,.9);color:#1b1a24}
+
+  /* ---------- panel (settings / how to play) ---------- */
+  #panel{position:fixed;inset:0;z-index:70;display:none;align-items:center;justify-content:center;
+    background:rgba(10,9,14,.82);backdrop-filter:blur(8px);padding:20px}
+  #panel.on{display:flex}
+  .sheet{width:min(560px,94vw);max-height:88vh;overflow-y:auto;
+    background:rgba(22,20,30,.96);border:1px solid rgba(224,178,92,.28);padding:26px 28px}
+  .sheet h2{font-size:15px;letter-spacing:.28em;text-transform:uppercase;color:#e0b25c;
+    margin-bottom:18px;font-weight:400}
+  .sheet h3{font-size:10px;letter-spacing:.24em;text-transform:uppercase;color:#7d7590;
+    margin:20px 0 8px;font-weight:400}
+  .row{display:flex;align-items:center;justify-content:space-between;gap:16px;
+    padding:9px 0;border-bottom:1px solid rgba(233,226,210,.07)}
+  .row label{font-size:13px;color:#cbbfa6;letter-spacing:.05em}
+  .row .sub{display:block;font-size:11px;color:#6b6479;letter-spacing:.02em;margin-top:2px}
+  .seg{display:flex;gap:2px}
+  .seg button{background:none;border:1px solid rgba(233,226,210,.2);color:#8b83a0;
+    font:inherit;font-size:11px;letter-spacing:.1em;padding:6px 11px;cursor:pointer;
+    text-transform:uppercase;transition:all .15s}
+  .seg button.on{background:#e0b25c;border-color:#e0b25c;color:#1b1a24}
+  .sw{width:46px;height:24px;border-radius:12px;background:rgba(233,226,210,.16);
+    border:none;cursor:pointer;position:relative;transition:background .18s;flex:none}
+  .sw::after{content:'';position:absolute;top:3px;left:3px;width:18px;height:18px;
+    border-radius:50%;background:#8b83a0;transition:transform .18s,background .18s}
+  .sw.on{background:rgba(224,178,92,.4)}
+  .sw.on::after{transform:translateX(22px);background:#e0b25c}
+  input[type=range]{-webkit-appearance:none;appearance:none;width:150px;height:3px;
+    background:rgba(233,226,210,.2);outline:none;cursor:pointer}
+  input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:15px;height:15px;
+    border-radius:50%;background:#e0b25c;cursor:pointer}
+  input[type=range]::-moz-range-thumb{width:15px;height:15px;border:none;border-radius:50%;
+    background:#e0b25c;cursor:pointer}
+  .sheetFoot{display:flex;gap:10px;justify-content:flex-end;margin-top:22px}
+  .howRow{display:flex;gap:14px;padding:10px 0;align-items:flex-start;
+    border-bottom:1px solid rgba(233,226,210,.07)}
+  .howRow kbd{flex:none;min-width:74px;text-align:center;font-family:ui-monospace,Menlo,Consolas,monospace;
+    font-size:11px;color:#e0b25c;border:1px solid rgba(224,178,92,.35);padding:5px 8px;
+    letter-spacing:.06em}
+  .howRow div{font-size:13px;color:#cbbfa6;line-height:1.6}
+  .howRow b{color:#e9e2d2;font-weight:400}
+
+  /* ---------- mobile controls ---------- */
+  #touch{position:fixed;inset:0;z-index:21;pointer-events:none;display:none}
+  body.touch #touch{display:block}
+  body.touch #keys{display:none}
+  .tc{position:absolute;bottom:calc(22px + env(safe-area-inset-bottom));
+    width:62px;height:62px;border-radius:50%;pointer-events:auto;
+    background:rgba(20,18,28,.5);border:1px solid rgba(224,178,92,.45);
+    color:#e0b25c;font-size:22px;display:flex;align-items:center;justify-content:center;
+    backdrop-filter:blur(4px);-webkit-tap-highlight-color:transparent;user-select:none;
+    transition:background .12s,transform .12s}
+  .tc:active,.tc.held{background:rgba(224,178,92,.8);color:#1b1a24;transform:scale(.94)}
+  #tcL{left:calc(16px + env(safe-area-inset-left))}
+  #tcR{left:calc(90px + env(safe-area-inset-left))}
+  #tcDive{right:calc(16px + env(safe-area-inset-right));width:76px;height:76px;
+    font-size:11px;letter-spacing:.12em;bottom:calc(20px + env(safe-area-inset-bottom))}
+  body.lefty #tcL{left:auto;right:calc(90px + env(safe-area-inset-right))}
+  body.lefty #tcR{left:auto;right:calc(16px + env(safe-area-inset-right))}
+  body.lefty #tcDive{right:auto;left:calc(16px + env(safe-area-inset-left))}
+  #gear{position:fixed;top:calc(14px + env(safe-area-inset-top));
+    right:calc(14px + env(safe-area-inset-right));z-index:24;width:34px;height:34px;
+    border-radius:50%;background:rgba(20,18,28,.42);border:1px solid rgba(233,226,210,.16);
+    color:#cbbfa6;cursor:pointer;font-size:15px;display:none;align-items:center;
+    justify-content:center;pointer-events:auto;transition:all .15s}
+  body.playing #gear{display:flex}
+  #gear:hover{background:rgba(224,178,92,.85);color:#1b1a24;border-color:#e0b25c}
+
+  body.pregame #hud,body.pregame #compass,body.pregame #keys,body.pregame #touch{
+    opacity:0;pointer-events:none}
+
+  @media (max-width:640px){ #keys{display:none} .cseg{width:40px}
+    #hud{padding:max(12px,env(safe-area-inset-top)) 12px 12px}
+    .kpip{width:8px;height:16px} .spip{width:10px;height:16px}
+    #face{font-size:14px} #facesub{font-size:10px}
+    #bottom{padding-bottom:96px}
+    #compass{bottom:110px}
+  }
+  @media (prefers-reduced-motion:reduce){ .spark{animation:none;opacity:.7} }
+</style>
+</head>
+<body>
+<canvas id="stage"></canvas>
+
+<div id="hud">
+  <div class="hrow">
+    <div>
+      <div class="lbl">Knights</div>
+      <div id="knights"></div>
+    </div>
+    <div id="facewrap">
+      <div id="face">&mdash;</div>
+      <div id="facesub"></div>
+    </div>
+    <div>
+      <div class="lbl" style="text-align:right">Garrison</div>
+      <div id="soldiers"></div>
+      <div id="banners" title="standards taken"></div>
+    </div>
+  </div>
+  <div id="bottom">
+    <div id="power"><div id="powerfill"></div></div>
+    <div id="hint"></div>
+  </div>
+</div>
+
+<svg id="band" xmlns="http://www.w3.org/2000/svg">
+  <circle class="anchor" id="bandRing" r="26"/>
+  <circle class="gauge" id="bandTrack" r="34" stroke="rgba(233,226,210,.16)"/>
+  <circle class="gauge" id="bandFill" r="34"/>
+  <line class="cord" id="bandCord"/>
+  <circle class="knob" id="bandKnob" r="7" fill="#e0b25c"/>
+</svg>
+<div id="readout"></div>
+
+<div id="compass"></div>
+
+<div id="keys">
+  <div><b>A</b> / <b>D</b> &mdash; circle the fortress</div>
+  <div><b>drag</b> &mdash; aim and pull back</div>
+  <div><b>space</b> &mdash; lance dive, in flight</div>
+  <div><b>R</b> &mdash; restart</div>
+</div>
+
+<div id="card">
+  <div id="cardTitle">CLEARED</div>
+  <div id="cardSub"></div>
+  <button id="cardBtn">Again</button>
+</div>
+
+<div id="touch">
+  <div class="tc" id="tcL">&#8249;</div>
+  <div class="tc" id="tcR">&#8250;</div>
+  <div class="tc" id="tcDive">DIVE</div>
+</div>
+
+<button id="gear" title="Settings">&#9881;</button>
+
+<div id="title">
+  <div id="titleTop">
+    <h1>ONAGER</h1>
+    <div class="tag">Pick your face, then throw a knight at it</div>
+    <div class="rule"></div>
+  </div>
+  <div id="titleBtns">
+    <button class="tbtn" id="btnPlay">Begin the siege</button>
+    <button class="tbtn ghost" id="btnHow">How to play</button>
+    <button class="tbtn ghost" id="btnSet">Settings</button>
+  </div>
+</div>
+
+<div id="panel"><div class="sheet" id="sheet"></div></div>
+
+<div id="boot">
+  <h1>ONAGER</h1>
+  <div class="spark"></div>
+  <p id="bootmsg">Winding the arm</p>
+</div>
+
+<script>
+  // Boot watchdog. A dead title screen is the most common failure mode for
+  // these builds - say so loudly instead of showing an elegant black rectangle.
+  window.__OK = false;
+  window.__fail = function (why) {
+    var b = document.getElementById('boot'), m = document.getElementById('bootmsg');
+    if (!b || !m) return;
+    b.classList.remove('gone'); b.style.opacity = '1'; b.style.pointerEvents = 'auto';
+    m.className = 'err'; m.textContent = 'Failed to start - ' + why;
+    var s = b.querySelector('.spark'); if (s) s.style.display = 'none';
+  };
+  window.addEventListener('error', function (e) {
+    if (!window.__OK) window.__fail((e.message || 'script error') +
+      (e.filename ? ' @ ' + e.filename.split('/').pop() + ':' + e.lineno : ''));
+  });
+  window.addEventListener('unhandledrejection', function (e) {
+    if (!window.__OK) window.__fail('' + ((e.reason && e.reason.message) || e.reason));
+  });
+  setTimeout(function () {
+    if (!window.__OK) window.__fail('nothing rendered after 20s. Check the console.');
+  }, 20000);
+</script>
+
+<script type="module" src="src/main.js?v=0.1.0"></script>
+</body>
+</html>
