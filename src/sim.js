@@ -11,6 +11,14 @@
 import { Game, S, SPEED_MIN, SPEED_MAX, YAW_MAX } from './game.js';
 import { LEVELS } from './levels.js';
 import { TYPE_ORDER, LOADOUTS, loadoutTotal } from './knights.js';
+import { normaliseDef, buildFromDef, LIMITS } from './leveldef.js';
+import { Physics } from './physics.js';
+
+// The worked examples ship with the game and are asserted in T17. Loaded
+// lazily and optionally: node has no fetch of relative paths, so the harness
+// injects them and the assertions are skipped when they are not there.
+export let EXAMPLES = null;
+export function setExamples(e) { EXAMPLES = e; }
 import { seed } from './rand.js';
 
 const N = 0, E = Math.PI / 2, SO = Math.PI, W = -Math.PI / 2;
@@ -609,6 +617,81 @@ export async function runSim(log = console.log) {
       clears.every(c => c.w > 0 || c.avg >= c.total * 0.75),
       clears.map(c => `${c.name.split(' ')[0]} ${c.w}/3`).join(', '));
     setSimLevel(BLACKMERE);
+  }
+
+
+  // ---- T16 the level format survives a stranger ---------------------------
+  //
+  // A player-made castle arrives over a URL from somebody you do not know. It
+  // is data, never code, and normaliseDef is the only door it comes through —
+  // so these check that the door holds. The bar is not "rejects bad input": it
+  // is "turns ANY input into a castle that builds", because somebody following
+  // a link would rather see a plain castle than an error page.
+  {
+    const junk = [null, undefined, 42, 'castle', [], {}, { pieces: 'no' },
+      { pieces: [null, 7, { t: 'nonsense' }, { t: 'wall' }] },
+      { orbitR: 1e9, masonry: -5, plinth: [1e9, -1e9], loadout: { lance: 1e9 } },
+      { name: 'x'.repeat(5000), author: 'y'.repeat(5000) },
+      { pieces: new Array(5000).fill({ t: 'tower' }) },
+      { theme: 'constructor', pieces: [{ t: 'wall', x: NaN, z: Infinity, len: NaN }] }];
+    let built = 0, threw = 0, worstPieces = 0;
+    for (const j of junk) {
+      try {
+        const d = normaliseDef(j);
+        worstPieces = Math.max(worstPieces, d.pieces.length);
+        const ph = new Physics();
+        ph.masonryScale = d.masonry;
+        buildFromDef(ph, d);
+        // Every number that reaches the world has to be finite, or Rapier
+        // takes the whole tab down rather than throwing something catchable.
+        let bad = 0;
+        for (const p of ph.list) {
+          const t = p.body.translation();
+          if (!Number.isFinite(t.x) || !Number.isFinite(t.y) || !Number.isFinite(t.z)) bad++;
+        }
+        if (!bad) built++;
+        ph.dispose();
+      } catch (e) { threw++; }
+    }
+    ok('T16a every malformed document still builds a world', built === junk.length,
+      `${built}/${junk.length} built, ${threw} threw`);
+    ok('T16b and the piece count is capped', worstPieces <= LIMITS.pieces,
+      `worst ${worstPieces} vs cap ${LIMITS.pieces}`);
+    await breathe();
+  }
+
+  // ---- T17 the worked examples are worked ---------------------------------
+  //
+  // These ship as the teaching material for the editor, and the first version
+  // of all three failed this: men hovering above tower roofs whose height I
+  // had guessed, lintels a metre inside their own piers, 48 interpenetrations.
+  // Shipping a broken example is worse than shipping none.
+  if (EXAMPLES) {
+    for (const raw of EXAMPLES.levels) {
+      const d = normaliseDef(raw);
+      const ph = new Physics();
+      ph.masonryScale = d.masonry;
+      const b = buildFromDef(ph, d);
+      const a = audit({ phys: ph });
+      ok(`T17 ${d.name}: builds clean`,
+        a.overlaps.length === 0 && a.floaters.length === 0,
+        `${a.overlaps.length} overlaps, ${a.floaters.length} floating`);
+      const spawn = ph.list.filter(p => !p.fixed).map(p => {
+        const t = p.body.translation(); return { p, x: t.x, y: t.y, z: t.z };
+      });
+      for (let i = 0; i < 300; i++) ph.step();
+      let drift = 0, lost = 0;
+      for (const s of spawn) {
+        if (s.p.dead) { lost++; continue; }
+        const t = s.p.body.translation();
+        drift = Math.max(drift, Math.hypot(t.x - s.x, t.y - s.y, t.z - s.z));
+      }
+      const fell = b.soldiers.filter(s => s.dead || s.up0 === 0).length;
+      ok(`T17 ${d.name}: stands up`, drift < 0.32 && !lost && !fell,
+        `drift ${drift.toFixed(2)}m, ${lost} lost, ${fell} fell`);
+      ph.dispose();
+      await breathe();
+    }
   }
 
 

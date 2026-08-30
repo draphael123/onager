@@ -1,0 +1,423 @@
+{
+  "v": 1,
+  "name": "Worked examples",
+  "author": "ONAGER",
+  "levels": [
+    {
+      "name": "The Gatehouse",
+      "author": "ONAGER",
+      "theme": "meadow",
+      "orbitR": 24,
+      "masonry": 0.75,
+      "plinth": [
+        11,
+        11
+      ],
+      "loadout": {
+        "lance": 4,
+        "maul": 2
+      },
+      "pieces": [
+        {
+          "t": "pier",
+          "x": -4,
+          "z": -8,
+          "courses": 5,
+          "hw": 1.2,
+          "hd": 1.2,
+          "mat": "stone"
+        },
+        {
+          "t": "pier",
+          "x": 4,
+          "z": -8,
+          "courses": 5,
+          "hw": 1.2,
+          "hd": 1.2,
+          "mat": "stone"
+        },
+        {
+          "t": "slab",
+          "x": 0,
+          "z": -8,
+          "y": 7,
+          "hx": 5.2,
+          "hy": 0.5,
+          "hz": 1.15,
+          "mat": "stone"
+        },
+        {
+          "t": "slab",
+          "x": 0,
+          "z": -8,
+          "y": 7.85,
+          "hx": 3.0,
+          "hy": 0.35,
+          "hz": 1.0,
+          "mat": "block"
+        },
+        {
+          "t": "soldier",
+          "x": -2.2,
+          "z": -8,
+          "y": 8.2,
+          "foe": "levy"
+        },
+        {
+          "t": "soldier",
+          "x": 2.2,
+          "z": -8,
+          "y": 8.2,
+          "foe": "levy"
+        },
+        {
+          "t": "pack",
+          "x": 0,
+          "z": -6.2,
+          "y": 1,
+          "pinY": true
+        },
+        {
+          "t": "banner",
+          "x": 0,
+          "z": -8,
+          "y": 8.2
+        },
+        {
+          "t": "wall",
+          "x": -9.5,
+          "z": -8,
+          "len": 7,
+          "thick": 0.9,
+          "courses": 4,
+          "axis": "x",
+          "mat": "block",
+          "merlons": true
+        },
+        {
+          "t": "wall",
+          "x": 9.5,
+          "z": -8,
+          "len": 7,
+          "thick": 0.9,
+          "courses": 4,
+          "axis": "x",
+          "mat": "block",
+          "merlons": true
+        },
+        {
+          "t": "tower",
+          "x": 0,
+          "z": 5,
+          "r": 3.0,
+          "thick": 0.6,
+          "courses": 5,
+          "joistAt": 3,
+          "mat": "block"
+        },
+        {
+          "t": "soldier",
+          "x": 0,
+          "z": 5,
+          "y": 7.24,
+          "foe": "levy"
+        },
+        {
+          "t": "crate",
+          "x": 6,
+          "z": 2,
+          "n": 3
+        }
+      ]
+    },
+    {
+      "name": "The Long Arcade",
+      "author": "ONAGER",
+      "theme": "frost",
+      "orbitR": 30,
+      "masonry": 0.9,
+      "plinth": [
+        14,
+        12
+      ],
+      "loadout": {
+        "lance": 3,
+        "maul": 3,
+        "sapper": 2
+      },
+      "pieces": [
+        {
+          "t": "pier",
+          "x": -9,
+          "z": -8,
+          "courses": 4,
+          "hw": 0.6,
+          "hd": 1.0,
+          "mat": "stone"
+        },
+        {
+          "t": "pier",
+          "x": -3,
+          "z": -8,
+          "courses": 4,
+          "hw": 0.6,
+          "hd": 1.0,
+          "mat": "stone"
+        },
+        {
+          "t": "pier",
+          "x": 3,
+          "z": -8,
+          "courses": 4,
+          "hw": 0.6,
+          "hd": 1.0,
+          "mat": "stone"
+        },
+        {
+          "t": "pier",
+          "x": 9,
+          "z": -8,
+          "courses": 4,
+          "hw": 0.6,
+          "hd": 1.0,
+          "mat": "stone"
+        },
+        {
+          "t": "slab",
+          "x": -6,
+          "z": -8,
+          "y": 5.85,
+          "hx": 2.96,
+          "hy": 0.45,
+          "hz": 1.0,
+          "mat": "stone"
+        },
+        {
+          "t": "slab",
+          "x": 0,
+          "z": -8,
+          "y": 5.85,
+          "hx": 2.96,
+          "hy": 0.45,
+          "hz": 1.0,
+          "mat": "stone"
+        },
+        {
+          "t": "slab",
+          "x": 6,
+          "z": -8,
+          "y": 5.85,
+          "hx": 2.96,
+          "hy": 0.45,
+          "hz": 1.0,
+          "mat": "stone"
+        },
+        {
+          "t": "slab",
+          "x": -6,
+          "z": -8,
+          "y": 6.7,
+          "hx": 2.9,
+          "hy": 0.4,
+          "hz": 1.4,
+          "mat": "stone"
+        },
+        {
+          "t": "slab",
+          "x": 0,
+          "z": -8,
+          "y": 6.7,
+          "hx": 2.9,
+          "hy": 0.4,
+          "hz": 1.4,
+          "mat": "stone"
+        },
+        {
+          "t": "slab",
+          "x": 6,
+          "z": -8,
+          "y": 6.7,
+          "hx": 2.9,
+          "hy": 0.4,
+          "hz": 1.4,
+          "mat": "stone"
+        },
+        {
+          "t": "pack",
+          "x": -6,
+          "z": -8,
+          "y": 1,
+          "pinY": true
+        },
+        {
+          "t": "pack",
+          "x": 6,
+          "z": -8,
+          "y": 1,
+          "pinY": true
+        },
+        {
+          "t": "soldier",
+          "x": 0,
+          "z": -8,
+          "y": 1,
+          "pinY": true,
+          "foe": "warden"
+        },
+        {
+          "t": "wall",
+          "x": 11,
+          "z": 2,
+          "len": 12,
+          "thick": 0.7,
+          "courses": 4,
+          "axis": "z",
+          "mat": "block",
+          "merlons": false
+        },
+        {
+          "t": "picket",
+          "x": 11,
+          "z": 2,
+          "y": 5.4,
+          "dx": 0,
+          "dz": 9
+        },
+        {
+          "t": "wall",
+          "x": -9,
+          "z": 8,
+          "len": 9,
+          "thick": 1.1,
+          "courses": 3,
+          "axis": "x",
+          "mat": "stone",
+          "merlons": true
+        },
+        {
+          "t": "soldier",
+          "x": -9,
+          "z": 6,
+          "y": 1,
+          "pinY": true,
+          "foe": "serjeant"
+        }
+      ]
+    },
+    {
+      "name": "Three Towers",
+      "author": "ONAGER",
+      "theme": "harvest",
+      "orbitR": 28,
+      "masonry": 0.85,
+      "plinth": [
+        13,
+        13
+      ],
+      "loadout": {
+        "lance": 3,
+        "maul": 2,
+        "sapper": 1,
+        "brothers": 2
+      },
+      "pieces": [
+        {
+          "t": "tower",
+          "x": -7,
+          "z": -6,
+          "r": 2.6,
+          "thick": 0.55,
+          "courses": 6,
+          "joistAt": 4,
+          "mat": "block"
+        },
+        {
+          "t": "tower",
+          "x": 7,
+          "z": -6,
+          "r": 2.6,
+          "thick": 0.55,
+          "courses": 6,
+          "joistAt": 4,
+          "mat": "block"
+        },
+        {
+          "t": "tower",
+          "x": 0,
+          "z": 6,
+          "r": 3.6,
+          "thick": 0.7,
+          "courses": 7,
+          "joistAt": 5,
+          "mat": "stone"
+        },
+        {
+          "t": "wall",
+          "x": 0,
+          "z": -6,
+          "len": 6,
+          "thick": 0.65,
+          "courses": 3,
+          "axis": "x",
+          "mat": "block",
+          "merlons": false
+        },
+        {
+          "t": "soldier",
+          "x": -7,
+          "z": -6,
+          "y": 8.34,
+          "foe": "levy"
+        },
+        {
+          "t": "soldier",
+          "x": 7,
+          "z": -6,
+          "y": 8.34,
+          "foe": "levy"
+        },
+        {
+          "t": "soldier",
+          "x": 0,
+          "z": 6,
+          "y": 9.44,
+          "foe": "serjeant"
+        },
+        {
+          "t": "soldier",
+          "x": -7,
+          "z": -10,
+          "y": 1,
+          "pinY": true,
+          "foe": "levy"
+        },
+        {
+          "t": "picket",
+          "x": 0,
+          "z": -6,
+          "y": 4.3,
+          "dx": 4,
+          "dz": 0
+        },
+        {
+          "t": "banner",
+          "x": 1.8,
+          "z": 6,
+          "y": 9.44
+        },
+        {
+          "t": "crate",
+          "x": -7,
+          "z": 1,
+          "n": 4
+        },
+        {
+          "t": "crate",
+          "x": 6,
+          "z": 2,
+          "n": 2
+        }
+      ]
+    }
+  ]
+}

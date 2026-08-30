@@ -327,6 +327,121 @@
     #compass{bottom:176px}
   }
 
+  /* ---------- the workshop ---------- */
+  /* A full-screen editor, not a panel: a castle plan needs the whole window,
+     and the game behind it is irrelevant while you are building. */
+  #workshop{position:fixed;inset:0;z-index:70;background:#0d0b14;
+    display:none;flex-direction:column;overflow:auto;
+    padding:max(18px,env(safe-area-inset-top)) 20px 20px}
+  #workshop.on{display:flex}
+  #workshop h2{font-size:15px;letter-spacing:.24em;text-transform:uppercase;
+    color:#e0b25c;margin:0 0 8px}
+  .wsHead{display:flex;justify-content:space-between;align-items:flex-start;
+    gap:20px;flex-wrap:wrap;margin-bottom:16px}
+  .wsHead .lead{max-width:520px}
+  .wsHeadBtns{display:flex;gap:8px;flex-wrap:wrap}
+  .wsTabs{display:flex;gap:6px;margin-bottom:14px}
+  .wsTabs button{background:none;border:1px solid rgba(233,226,210,.16);color:#8b83a0;
+    font:inherit;font-size:10px;letter-spacing:.18em;text-transform:uppercase;
+    padding:7px 14px;border-radius:5px;cursor:pointer}
+  .wsTabs button.on{border-color:#e0b25c;color:#e9e2d2;background:rgba(60,45,22,.42)}
+  .wsGrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(258px,1fr));gap:10px}
+  .wsCard{background:rgba(255,255,255,.03);border:1px solid rgba(233,226,210,.12);
+    border-radius:7px;padding:12px 13px}
+  .wsCardName{font-size:13px;color:#e9e2d2;letter-spacing:.06em}
+  .wsCardSub{font-size:11px;color:#8b83a0;margin-top:5px;line-height:1.5}
+  .wsCardBtns{display:flex;gap:5px;flex-wrap:wrap;margin-top:11px}
+  .wsCardBtns button,.wsPropBtns button{background:none;border:1px solid rgba(233,226,210,.18);
+    color:#b8b0c6;font:inherit;font-size:10px;letter-spacing:.1em;text-transform:uppercase;
+    padding:5px 9px;border-radius:4px;cursor:pointer}
+  .wsCardBtns button:hover,.wsPropBtns button:hover{border-color:#e0b25c;color:#e9e2d2}
+  .wsCardBtns .danger:hover,.wsPropBtns .danger:hover{border-color:#c8443a;color:#ff8f7a}
+  .wsEmpty{color:#8b83a0;font-size:13px}
+  .wsPackMake{display:flex;gap:8px;margin-bottom:14px;flex-wrap:wrap}
+
+  .wsEdHead{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:12px}
+  .wsEdBtns{display:flex;gap:8px;margin-left:auto}
+  #wsName,#wsAuthor,#wsPackName{
+    background:rgba(255,255,255,.04);border:1px solid rgba(233,226,210,.16);
+    border-radius:5px;color:#e9e2d2;font:inherit;font-size:13px;padding:8px 11px}
+  #wsName{min-width:220px}
+
+  .wsBody{display:grid;grid-template-columns:186px 1fr 232px;gap:12px;
+    align-items:stretch;min-height:0}
+  .wsPal{display:flex;flex-direction:column;gap:5px;overflow:auto}
+  .wsPalTitle,.wsPropTitle{font-size:9px;letter-spacing:.24em;text-transform:uppercase;
+    color:#7d7590;margin-bottom:4px}
+  .wsPropTitle.mt{margin-top:16px}
+  .wsPiece{text-align:left;background:rgba(255,255,255,.03);
+    border:1px solid rgba(233,226,210,.12);border-radius:6px;padding:8px 10px;
+    cursor:pointer;font:inherit;color:inherit}
+  .wsPiece:hover{background:rgba(255,255,255,.06)}
+  .wsPiece.on{border-color:#e0b25c;background:rgba(60,45,22,.5)}
+  .wsPieceName{display:block;font-size:12px;color:#e9e2d2;letter-spacing:.06em}
+  .wsPieceHint{display:block;font-size:10px;color:#7d7590;line-height:1.4;margin-top:3px}
+
+  .wsPlanWrap{display:flex;flex-direction:column;min-width:0}
+  #wsCanvas{width:100%;height:clamp(320px,54vh,620px);border-radius:8px;
+    border:1px solid rgba(233,226,210,.12);display:block;touch-action:none}
+  .wsPlanFoot{display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap;
+    font-size:10.5px;color:#7d7590;margin-top:7px}
+  .wsKeys b{color:#b8b0c6;font-weight:400}
+
+  .wsProps{overflow:auto;max-height:clamp(320px,54vh,620px);padding-right:4px}
+  .wsRow{display:flex;justify-content:space-between;align-items:center;gap:8px;
+    font-size:11.5px;color:#b8b0c6;padding:4px 0}
+  .wsRow input[type=number],.wsRow select{width:92px;background:rgba(255,255,255,.05);
+    border:1px solid rgba(233,226,210,.16);border-radius:4px;color:#e9e2d2;
+    font:inherit;font-size:12px;padding:4px 7px}
+  .wsRow input[type=checkbox]{width:16px;height:16px;accent-color:#e0b25c}
+  .wsHint{font-size:10.5px;color:#7d7590;line-height:1.5;margin:6px 0 0}
+  .wsNone{font-size:11.5px;color:#7d7590;line-height:1.5}
+  .wsPropBtns{display:flex;gap:6px;margin-top:10px}
+
+  .wsChecks{margin-top:14px;background:rgba(255,255,255,.025);
+    border:1px solid rgba(233,226,210,.1);border-radius:7px;padding:12px 14px}
+  .wsChecksHead{display:flex;justify-content:space-between;align-items:center;gap:12px}
+  .wsChecksHead b{font-size:10px;letter-spacing:.24em;text-transform:uppercase;color:#7d7590;
+    font-weight:400}
+  .wsChecks ul{list-style:none;padding:0;margin:9px 0 0}
+  .wsChecks li{font-size:11.5px;color:#b8b0c6;line-height:1.6;padding-left:16px;position:relative}
+  .wsChecks li::before{content:"\25B8";position:absolute;left:0;color:#7d7590}
+  .wsChecks li.bad{color:#ff8f7a}
+  .wsChecks li.bad::before{content:"\2715";color:#c8443a}
+  .wsChecks li.good{color:#9fd0a0}
+  .wsChecks li.good::before{content:"\2713";color:#6fa870}
+  .wsVerdict{margin-top:10px;border-top:1px solid rgba(233,226,210,.1);padding-top:9px}
+  .wsVerdict b{font-size:11px;letter-spacing:.2em;text-transform:uppercase}
+  .wsVerdict.good b{color:#9fd0a0}
+  .wsVerdict.bad b{color:#ff8f7a}
+  .wsBusy{font-size:11.5px;color:#7d7590}
+
+  #linkBox{position:fixed;left:50%;top:50%;transform:translate(-50%,-50%);z-index:80;
+    width:min(540px,calc(100vw - 40px));background:#161320;
+    border:1px solid rgba(224,178,92,.34);border-radius:9px;padding:18px 20px;
+    display:none;box-shadow:0 20px 60px rgba(0,0,0,.6)}
+  #linkBox.on{display:block}
+  #linkBox p{font-size:12.5px;color:#ded7ca;margin:0 0 10px}
+  #linkBox textarea{width:100%;background:rgba(255,255,255,.05);
+    border:1px solid rgba(233,226,210,.16);border-radius:5px;color:#e9e2d2;
+    font:12px ui-monospace,Menlo,Consolas,monospace;padding:9px;resize:vertical}
+  #linkBox button{margin-top:11px}
+
+  #toast{position:fixed;left:50%;bottom:26px;transform:translateX(-50%) translateY(10px);
+    z-index:90;background:rgba(16,13,24,.94);border:1px solid rgba(224,178,92,.4);
+    border-radius:6px;padding:10px 16px;font-size:12.5px;color:#f0e4c8;
+    opacity:0;pointer-events:none;transition:opacity .2s,transform .2s;
+    max-width:calc(100vw - 40px);text-align:center}
+  #toast.on{opacity:1;transform:translateX(-50%) translateY(0)}
+
+  @media (max-width:900px){
+    .wsBody{grid-template-columns:1fr}
+    .wsPal{flex-direction:row;flex-wrap:wrap}
+    .wsPiece{flex:1 1 140px}
+    .wsPieceHint{display:none}
+    .wsProps{max-height:none}
+  }
+
   /* ---------- the garrison book ---------- */
   /* The portrait is a live model, not a picture. Size is the only tell for
      what a Serjeant will do to a Lance, and a still image does not carry it. */
@@ -537,12 +652,20 @@
       <button class="tbtn" id="btnPlay">Begin the siege</button>
       <button class="tbtn ghost" id="btnHow">How to play</button>
       <button class="tbtn ghost" id="btnFoes">The garrison</button>
+      <button class="tbtn ghost" id="btnWorkshop">Build a castle</button>
       <button class="tbtn ghost" id="btnSet">Settings</button>
     </div>
   </div>
 </div>
 
 <div id="panel"><div class="sheet" id="sheet"></div></div>
+
+<div id="workshop">
+  <div id="wsShelf"></div>
+  <div id="wsEditor" style="display:none"></div>
+</div>
+<div id="linkBox"></div>
+<div id="toast"></div>
 
 <div id="boot">
   <h1>ONAGER</h1>

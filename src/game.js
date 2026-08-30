@@ -10,6 +10,7 @@ import { LEVELS, THEMES } from './levels.js';
 import { SET } from './settings.js';
 import { KNIGHT_PALETTES } from './render.js';
 import { TYPES, TYPE_ORDER, LOADOUTS, loadoutList, loadoutTotal } from './knights.js';
+import { buildFromDef, facesFor, normaliseDef } from './leveldef.js';
 
 // Orbit radius is per LEVEL now: a small keep sat at 38 reads as a model on a
 // table and every shot becomes a long blind lob.
@@ -50,7 +51,34 @@ export class Game {
   }
 
   setLevel(i) {
+    this.custom = null;
     this.levelIdx = Math.max(0, Math.min(LEVELS.length - 1, i));
+    this.reset();
+  }
+
+  // Play a player-made castle. It goes through exactly the same reset() as the
+  // built-in ones — the only difference is where the level object comes from,
+  // so a custom castle gets the keystone analysis, the crew, the aim bands and
+  // the scoring for free rather than as a second implementation.
+  setCustom(def, meta = {}) {
+    const d = normaliseDef(def);
+    this.custom = {
+      id: 'custom',
+      name: d.name,
+      sub: d.author ? 'by ' + d.author : 'a castle somebody built',
+      blurb: d.author ? `${d.name} — by ${d.author}` : d.name,
+      build: (phys) => buildFromDef(phys, d),
+      faces: facesFor(d),
+      knights: Object.values(d.loadout).reduce((a, b) => a + b, 0),
+      orbitR: d.orbitR,
+      masonry: d.masonry,
+      theme: d.theme,
+      loadout: d.loadout,
+      def: d,
+      packIdx: meta.packIdx,
+      packLen: meta.packLen,
+      packName: meta.packName,
+    };
     this.reset();
   }
 
@@ -63,7 +91,7 @@ export class Game {
       if (this.knightMesh) { this.rd.scene.remove(this.knightMesh); this.knightMesh = null; }
       this.rd.hideArc();
     }
-    const L = LEVELS[this.levelIdx];
+    const L = this.custom || LEVELS[this.levelIdx];
     this.level = L;
     this.faces = L.faces;
     this.orbitR = L.orbitR;
@@ -72,7 +100,7 @@ export class Game {
     this.speedMax = SPEED_MAX * k;
     // The loadout is the hand you are dealt for this castle. Spent from the
     // front unless you pick something else, and the mix is half the puzzle.
-    this.loadCounts = { ...(LOADOUTS[L.id] || { lance: L.knights }) };
+    this.loadCounts = { ...(L.loadout || LOADOUTS[L.id] || { lance: L.knights }) };
     if (this.knightOverride) this.loadCounts = { lance: this.knightOverride };
     this.loadout = loadoutList(this.loadCounts);
     this.knightsTotal = this.loadout.length || L.knights;

@@ -117,6 +117,49 @@ taking it brings the bay down rather than chipping it.
 
 Blocks darken as they take damage and glow hot when one more hit will do it.
 
+## The workshop
+
+**Build a castle** on the title screen opens a top-down plan editor. Every
+castle here is laid out on a plan and then given a height, so that is what the
+editor is; a 3D gizmo editor would be weeks of work to make a job harder than
+it is on paper.
+
+Nine pieces &mdash; wall, tower, pier, slab, soldier, pack, picket, standard,
+crates &mdash; and they are exactly the vocabulary the built-in castles are
+written in. A player's running bond staggers its joints and closes its ends the
+same way Blackmere's does, because it goes through the same code.
+
+Heights snap. A six-course tower's roof is at 8.14 metres and nobody should
+have to know that, so anything that takes a height sits on whatever was placed
+before it and lies underneath. Type a height and it stays where you put it.
+
+**Build and check it** builds the castle in a headless Rapier world and runs
+the same audit the built-in levels are held to: interpenetration at spawn,
+floating masonry, whether it stands up on its own for five seconds, whether the
+garrison keeps its feet. That is the check that catches a fortress which will
+blow itself apart on frame one, and no amount of looking at the plan finds it.
+
+### Sharing
+
+There is no server. A castle is a few hundred bytes of numbers, so it travels
+two ways that need nobody's permission:
+
+* **a link** &mdash; the whole castle deflated into the URL fragment, which
+  never leaves the browser. A thirteen-piece castle is a 280-character link; a
+  ninety-piece one is under 800, and a four-castle pack under 1000.
+* **a file** &mdash; readable JSON you can open in a text editor before you run
+  it, which is also how packs are kept.
+
+A **pack** is a set of castles that play in order, shared as one link. Opening
+somebody's link offers you the castle rather than launching it: it came from a
+stranger, and you should see what you are opening.
+
+Everything arriving from outside goes through one door (`normaliseDef`), which
+fills in what is missing and clamps what is present. It never throws &mdash; a
+malformed document becomes a buildable castle, because somebody following a
+link would rather see a plain castle than an error page. Twelve deliberately
+broken documents are asserted to still build a world.
+
 ## Why it is built this way
 
 3D Angry Birds barely exists because of aiming: add a third axis and the camera

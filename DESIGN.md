@@ -564,3 +564,57 @@ slabs were cantilevered past their own centre of mass, lintels overlapping their
 neighbours by 87cm, a picket standing 22cm above the roof it was meant to be on,
 and a flanking wall biting 30cm into a gate pier because a running bond's end
 cells reach past `len/2`. All invisible in a screenshot and all fatal in play.
+
+---
+
+## Round eleven — the workshop
+
+### A plan, not a scene
+
+Every castle in this game is a plan with heights on it. Walls run along X or Z,
+towers are circles, piers are dots, and the only genuinely three-dimensional
+decision is what height a man or a slab sits at. So the editor is a top-down
+canvas with the siege ring drawn on it — because where you can stand is half of
+what makes a castle interesting, and it is invisible otherwise.
+
+The nine pieces are exactly the builder's vocabulary. The editor cannot express
+a castle the game does not already know how to build, which is what keeps a
+player's masonry as sound as the hand-written levels'.
+
+### The thing that made it usable
+
+The first version asked for an absolute height. A six-course tower's roof is at
+8.14 metres and the author has no way to know that, so every soldier I placed
+on a roof hovered. **Heights snap** to whatever was placed before them and lies
+underneath — and a slab is looked up across its whole span rather than at its
+centre, so a lintel finds the piers at its ends instead of the gap between them.
+
+Support follows PLACEMENT ORDER. Without that rule a second course of slabs
+stacked on the first — their footprints touch, so each snapped onto the last —
+and an arcade roof climbed to nine metres in three steps. Placement order is
+also the model the author already has: you build from the bottom up.
+
+### I shipped three broken examples
+
+The worked examples are the teaching material, and the first version of all
+three failed the audit: 48 interpenetrations on one, lintels a metre inside
+their own piers, men hovering above tower roofs whose height I had guessed,
+a picket standing in a merlon, a flanking wall biting into a gate pier because
+a running bond's end cells reach past `len/2`.
+
+They are now generated through the editor's own snapping and asserted in T17.
+Shipping a broken example is worse than shipping none.
+
+### Sharing without a server
+
+A castle is data, never code. It travels as a deflated base64 URL fragment —
+which never leaves the browser — or as readable JSON. A thirteen-piece castle
+is a 280-character link.
+
+Everything from outside goes through one door. `normaliseDef` fills in what is
+missing and clamps what is present, and it never throws: a malformed document
+becomes a buildable castle, because somebody following a link would rather see
+a plain castle than an error page. T16 asserts that twelve deliberately broken
+documents — nulls, numbers, strings, five thousand towers, NaN coordinates —
+all still build a finite world, because a non-finite coordinate does not throw
+in Rapier, it takes the tab down.
