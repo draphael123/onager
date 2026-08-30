@@ -84,9 +84,14 @@ export class Game {
       this.palettes.push(KNIGHT_PALETTES[(i + this.levelIdx * 3) % KNIGHT_PALETTES.length]);
     }
     this.phys = new Physics();
+    // Set BEFORE the castle is built: every block reads it as it is created.
+    this.phys.masonryScale = L.masonry != null ? L.masonry : 1;
     const b = L.build(this.phys);
     this.banners = b.banners;
     this.phys.refreshWardens();
+    // What is holding this building up. Static, computed once, and the markers
+    // it produces are the answer to "which block do I actually hit".
+    this.phys.analyseStructure(this.faces);
     this.bannersDown = 0;
     this.soldiers = b.soldiers;
     this.soldiersTotal = b.soldiers.length;
@@ -127,6 +132,18 @@ export class Game {
       this.rd.orbitR = this.orbitR;
       this.rd.buildEnvironment(THEMES[L.theme]);
       this.rd.buildWaiting(this.palettes, this.loadout);
+      // The camp is pinned to where the engine starts and stays there. Rolling
+      // the machine away from your own tents is what makes circling the castle
+      // feel like moving rather than like the world spinning.
+      const c = this.launchPos();
+      const cf = this.forward();
+      // Set back and off to one side. Directly behind the engine it filled the
+      // bottom of the frame at the starting bearing.
+      const cr = { x: -cf.z, z: cf.x };
+      this.rd.placeCamp(c.x - cf.x * 8.5 + cr.x * 7, c.z - cf.z * 8.5 + cr.z * 7,
+        this.angle + Math.PI / 2);
+      this.rd.buildKeystones(this.phys.keystones);
+      this._syncCrew();
       for (const p of this.phys.list) this.rd.addPart(p);
       // Hook AFTER the initial build, so these only fire during play.
       this.phys.onAdd = (p) => this.rd.addPart(p);
@@ -183,9 +200,101 @@ export class Game {
   // the machine, down raises the arm. Power came off the drag because three
   // values cannot come out of two axes without one of them fighting the others
   // — and range is the thing you set once per face and then leave alone.
+  // Called once when the drag starts, so elevation can be adjusted RELATIVE to
+  // where it already was. The old mapping was absolute — dy=0 meant 6 degrees —
+  // so every drag threw the elevation away and rebuilt it from scratch, you
+  // could only ever raise (never lower) within a drag, and pressing near the
+  // bottom of the window left no room to reach the high angles at all.
+  beginDrag() {
+    this.elev0 = this.elev;
+    this.yaw0 = this.yaw;
+    this.dragging = true;
+  }
+
   setDrag(dx, dy) {
-    this.yaw = clamp(dx / 300, -1, 1) * YAW_MAX;
-    this.elev = ELEV_MIN + (ELEV_MAX - ELEV_MIN) * clamp(dy / 280, 0, 1);
+    const span = ELEV_MAX - ELEV_MIN;
+    this.yaw = clamp((this.yaw0 || 0) / YAW_MAX + dx / 300, -1, 1) * YAW_MAX;
+    this.elev = clamp((this.elev0 != null ? this.elev0 : this.elev) + (dy / 240) * span,
+      ELEV_MIN, ELEV_MAX);
+  }
+
+  // Keyboard and button elevation, in degrees. Coarse by default, fine on
+  // Shift — the same shape as the orbit trim.
+  addElev(deg) {
+    this.elev = clamp(this.elev + deg * Math.PI / 180, ELEV_MIN, ELEV_MAX);
+    return this.elevDeg();
+  }
+
+  elevDeg() { return this.elev * 180 / Math.PI; }
+
+  // What is actually reachable from where you are standing.
+  //
+  // Returns the window of ELEVATIONS that hit something at the current range,
+  // and the window of RANGES that hit something at any elevation. The second
+  // one is the important half: three of the five bearings on the first castle
+  // have no solution at 80% range, and before this the game said nothing at
+  // all about it — you swept the angle through sixty degrees, hit nothing, and
+  // had no way to learn that the range was the problem.
+  //
+  // Swept once per bearing and cached, because it is 21 powers x 2 roots x the
+  // garrison and the bearing only changes when you drive.
+  aimBand() {
+    if (this._bandKey === this.angle.toFixed(3)) return this._band;
+    this._bandKey = this.angle.toFixed(3);
+    const live = this.soldiers.filter(x => !x.dead && x.up0 !== 0);
+    let eLo = null, eHi = null, pLo = null, pHi = null;
+    for (let i = 0; i <= 20; i++) {
+      const pw = 0.2 + (i / 20) * 0.8;
+      let anyAtThisPower = false;
+      for (const sol of live) {
+        const t = sol.body.translation();
+        for (const high of [false, true]) {
+          const a = this.solve(t.x, t.y, t.z, pw, high);
+          if (!a) continue;
+          // Only targets this machine can be swung onto — the trim reaches
+          // about 24 degrees each way, so allow a little more than that.
+          const d = Math.abs(Math.atan2(Math.sin(a.angle - this.angle),
+            Math.cos(a.angle - this.angle)));
+          if (d > 0.72) continue;
+          anyAtThisPower = true;
+          if (Math.abs(pw - this.power) < 0.03) {
+            eLo = eLo == null ? a.elevDeg : Math.min(eLo, a.elevDeg);
+            eHi = eHi == null ? a.elevDeg : Math.max(eHi, a.elevDeg);
+          }
+        }
+      }
+      if (anyAtThisPower) {
+        pLo = pLo == null ? pw : Math.min(pLo, pw);
+        pHi = pHi == null ? pw : Math.max(pHi, pw);
+      }
+    }
+    this._band = { elev: eLo == null ? null : { lo: eLo, hi: eHi },
+      power: pLo == null ? null : { lo: pLo, hi: pHi } };
+    return this._band;
+  }
+
+  // The elevation window at the CURRENT range. Recomputed on power change,
+  // which is cheap next to the full sweep above.
+  elevBand() {
+    const key = this.angle.toFixed(3) + '|' + this.power.toFixed(2);
+    if (this._eKey === key) return this._eBand;
+    this._eKey = key;
+    let lo = null, hi = null;
+    const live = this.soldiers.filter(x => !x.dead && x.up0 !== 0);
+    for (const sol of live) {
+      const t = sol.body.translation();
+      for (const high of [false, true]) {
+        const a = this.solve(t.x, t.y, t.z, this.power, high);
+        if (!a) continue;
+        const d = Math.abs(Math.atan2(Math.sin(a.angle - this.angle),
+          Math.cos(a.angle - this.angle)));
+        if (d > 0.72) continue;
+        lo = lo == null ? a.elevDeg : Math.min(lo, a.elevDeg);
+        hi = hi == null ? a.elevDeg : Math.max(hi, a.elevDeg);
+      }
+    }
+    this._eBand = (lo == null) ? null : { lo, hi };
+    return this._eBand;
   }
 
   addPower(d) {
@@ -744,6 +853,7 @@ export class Game {
     const L = this.launchPos();
     rd.onager.position.copy(L);
     rd.onager.rotation.y = this.angle + Math.PI / 2;
+    if (this._crewKey !== this.selected + '|' + this.knights) this._syncCrew();
     if (rd.machine) rd.machine.rotation.y = -this.yaw;
     rd.setWaiting(this.knights);
     const rest = -0.5 - this.power * 0.85;
@@ -758,6 +868,7 @@ export class Game {
       const v = this.knight.body.linvel();
       rd.poseFlying(this.knightMesh, v, dt);
     }
+    rd.syncKeystones(this.angle, dt);
     rd.syncExtraKnights(dt);
     rd._stepTypeFx(dt);
     rd.animateWaiting(dt, this.tAnim = (this.tAnim || 0) + dt);
@@ -770,6 +881,17 @@ export class Game {
 
     rd.stepFX(dt);
     this.updateCamera(dt);
+  }
+
+  // The two men on the engine show what is loaded and what is next, which is
+  // the same information as the rack — but where you are looking.
+  _syncCrew() {
+    if (!this.rd) return;
+    this._crewKey = this.selected + '|' + this.knights;
+    const rest = this.remainingList();
+    const a = this.knights > 0 ? TYPES[this.selected] || TYPES[rest[0]] : null;
+    const b = rest.find(id => id !== this.selected) || rest[0];
+    this.rd.setCrew(this.palettes, a, this.knights > 1 ? TYPES[b] : null);
   }
 
   // ---- ballistic solver ---------------------------------------------------

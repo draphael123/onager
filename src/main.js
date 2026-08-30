@@ -133,12 +133,55 @@ const CAM_BLURB = {
 let hintT = 0;
 function hint(t, secs = 4) { $('hint').textContent = t; hintT = secs; }
 
+let bumpElev = () => {};
+let lastGaugeKey = '';
+
+const ELEV_LO = 6, ELEV_HI = 66;      // must match game.js ELEV_MIN/MAX
+
 function syncPower() {
   $('powerfill').style.width = (game.power * 100).toFixed(1) + '%';
   $('powVal').textContent = (game.power * 100).toFixed(0) + '%';
+  const e = game.elevDeg();
+  $('elevfill').style.width = ((e - ELEV_LO) / (ELEV_HI - ELEV_LO) * 100).toFixed(1) + '%';
+  $('elevVal').textContent = e.toFixed(0) + '°';
+  // The window of RANGES that reach anything at all from this bearing. Without
+  // it, standing where no range works looks identical to standing where the
+  // angle is merely wrong, and the player sweeps sixty degrees for nothing.
+  const A = game.aimBand();
+  const pbar = $('powBand');
+  if (A && A.power) {
+    pbar.style.left = ((A.power.lo - 0.2) / 0.8 * 100).toFixed(1) + '%';
+    pbar.style.width = Math.max(2, (A.power.hi - A.power.lo) / 0.8 * 100).toFixed(1) + '%';
+    pbar.style.opacity = '1';
+  } else pbar.style.opacity = '0';
+  // Nothing on this bearing at any range means the answer is to move, and the
+  // game should say so rather than let you keep trying.
+  $('powerRow').classList.toggle('nosol', !(A && A.power));
+
+  // The band of angles that reach something on this bearing at THIS range.
+  // Aiming used to be a blind search between 6 and 66 degrees.
+  const b = game.elevBand();
+  const bar = $('elevBand');
+  if (b) {
+    // Pad it out to a visible width. When only one target on this bearing has
+    // a solution the true band is a single angle, and a zero-width marker is
+    // no help at all — 3 degrees each side is roughly the tolerance a shot
+    // actually has anyway.
+    const lo = Math.max(ELEV_LO, b.lo - 3), hi = Math.min(ELEV_HI, b.hi + 3);
+    const l = ((lo - ELEV_LO) / (ELEV_HI - ELEV_LO)) * 100;
+    const r = ((hi - ELEV_LO) / (ELEV_HI - ELEV_LO)) * 100;
+    bar.style.left = l.toFixed(1) + '%';
+    bar.style.width = Math.max(2, r - l).toFixed(1) + '%';
+    bar.style.opacity = '1';
+  } else bar.style.opacity = '0';
 }
 
 function syncHud(dt) {
+  // The gauges have to be driven from the STATE every frame, not only from the
+  // events that change it: dragging sets elevation directly and the readout sat
+  // at its last button-pressed value while the arm visibly moved.
+  const key = game.power.toFixed(3) + '|' + game.elev.toFixed(4) + '|' + game.angle.toFixed(2);
+  if (key !== lastGaugeKey) { lastGaugeKey = key; syncPower(); }
   for (const t of kpips) {
     const n = game.loadCounts[t.dataset.type] || 0;
     t.querySelector('.kct').textContent = '×' + n;
@@ -259,7 +302,7 @@ function wireInput() {
     sfx.resume();
     if (!playing || game.state !== S.AIM || game.knights <= 0) return;
     anchor = { x: e.clientX, y: e.clientY };
-    game.dragging = true;
+    game.beginDrag();
     game.setDrag(0, 0);
     lastNotch = -1;
     showBand(anchor.x, anchor.y, anchor.x, anchor.y);
@@ -306,8 +349,14 @@ function wireInput() {
     keys.add(k);
     if (k === ' ') { e.preventDefault(); if (playing && game.dive() && coach) coach.noteDive(); }
     if (playing && game.state === S.AIM) {
-      if (k === 'w' || k === 'arrowup') { e.preventDefault(); bumpPower(0.04); }
-      if (k === 's' || k === 'arrowdown') { e.preventDefault(); bumpPower(-0.04); }
+      if (k === 'w') { e.preventDefault(); bumpPower(0.04); }
+      if (k === 's') { e.preventDefault(); bumpPower(-0.04); }
+      // Elevation gets its own pair of keys. Aiming high or low used to mean
+      // finding room to drag 280 pixels downward, which on a trackpad or near
+      // the bottom of the window simply was not there.
+      const fine = keys.has('shift') ? 0.35 : 1;
+      if (k === 'arrowup') { e.preventDefault(); bumpElev(2.5 * fine); }
+      if (k === 'arrowdown') { e.preventDefault(); bumpElev(-2.5 * fine); }
     }
     // 1-5 load a different man. Cycling with one key was worse: you are
     // choosing between five things at once, not stepping through a list.
@@ -344,20 +393,24 @@ function wireInput() {
   // Range is its own control now. Wheel, W/S, arrows, and buttons for touch.
   const bumpPower = (d) => {
     game.addPower(d);
-    syncPower();
     sfx.tick(0.7 + game.power * 0.6);
+  };
+  bumpElev = (deg) => {
+    game.addElev(deg);
+    sfx.tick(0.5 + (game.elev / 1.2) * 0.6);
   };
   addEventListener('wheel', (e) => {
     if (!playing || game.state !== S.AIM) return;
     e.preventDefault();
     bumpPower(e.deltaY < 0 ? 0.04 : -0.04);
   }, { passive: false });
-  const holdPow = (id, d) => {
+  const hold = (id, fn) => {
     const el = $(id);
+    if (!el) return;
     let t = 0;
     const go = (e) => {
-      e.preventDefault(); bumpPower(d);
-      clearInterval(t); t = setInterval(() => bumpPower(d), 110);
+      e.preventDefault(); fn();
+      clearInterval(t); t = setInterval(fn, 110);
     };
     const stop = () => clearInterval(t);
     el.addEventListener('pointerdown', go);
@@ -365,8 +418,10 @@ function wireInput() {
     el.addEventListener('pointerleave', stop);
     el.addEventListener('pointercancel', stop);
   };
-  holdPow('powUp', 0.04);
-  holdPow('powDown', -0.04);
+  hold('powUp', () => bumpPower(0.04));
+  hold('powDown', () => bumpPower(-0.04));
+  hold('elevUp', () => bumpElev(2.5));
+  hold('elevDown', () => bumpElev(-2.5));
 
   $('tcDive').addEventListener('pointerdown', (e) => {
     e.preventDefault(); sfx.resume();
@@ -415,6 +470,7 @@ function startCoach(levelIdx) {
   const touch = matchMedia('(pointer: coarse)').matches;
   coach = new Tutorial(game, {
     root: $('coach'), title: $('coachTitle'), body: $('coachBody'),
+    ask: $('coachAsk'), halo: $('coachHalo'),
     dots: $('coachDots'), next: $('coachNext'),
   }, touch);
   document.body.classList.add('coaching');

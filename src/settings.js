@@ -14,6 +14,7 @@ export const SET = {
   haptics: true,
   showArc: true,
   showMarkers: true,
+  showWeak: true,         // keystone markers on the face you are looking at
   leftHanded: false,
   reduceMotion: false,
   camera: 'siege',        // siege | low | wide | wall — see game.js CAM_MODES

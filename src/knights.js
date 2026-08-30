@@ -116,9 +116,9 @@ export const TYPE_ORDER = ['lance', 'maul', 'sapper', 'brothers'];
 // What each castle issues you. A loadout is a hand: the mix is the puzzle, and
 // running out of the obvious answer is what makes you look at the other faces.
 export const LOADOUTS = {
-  1: { lance: 4, maul: 2 },
-  2: { lance: 3, maul: 2, sapper: 2 },
-  3: { lance: 3, maul: 2, sapper: 2, brothers: 2 },
+  1: { lance: 5, maul: 3 },
+  2: { lance: 4, maul: 3, sapper: 2 },
+  3: { lance: 3, maul: 3, sapper: 2, brothers: 2 },
   // Stonefall is the arcade: Mauls take the piers, and the two packs in the
   // bays are what the Sappers are for.
   4: { lance: 3, maul: 3, sapper: 2, brothers: 2 },

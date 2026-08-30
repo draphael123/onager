@@ -76,7 +76,7 @@
      not say whether you are at Millbrook or Vantwick. */
   .hleft .lbl{display:flex;align-items:baseline;gap:8px}
   #castleNum{color:#e0b25c;font-size:11px;letter-spacing:.1em}
-  #castleName{color:#8b83a0}
+  #castleName{color:#a79ebc}
   @media (max-width:720px){
     .ktile{width:42px}
     .kkey{display:none}
@@ -100,7 +100,7 @@
 
   #facewrap{text-align:center;flex:1}
   #face{font-size:clamp(15px,2.4vw,21px);letter-spacing:.2em;text-transform:uppercase;color:#e9e2d2}
-  #facesub{font-size:11px;letter-spacing:.08em;color:#8b83a0;margin-top:5px;min-height:15px}
+  #facesub{font-size:11px;letter-spacing:.08em;color:#b3aac6;margin-top:5px;min-height:15px}
 
   /* ---------- drag band ---------- */
   /* The slingshot had no visual anchor at all: you dragged in empty space and
@@ -124,28 +124,57 @@
   #bottom{display:flex;flex-direction:column;align-items:center;gap:9px}
   /* Power is its own control now — it is set once for a face and left alone,
      so it is always on screen rather than only while dragging. */
-  #powerRow{display:flex;align-items:center;gap:12px;pointer-events:auto;opacity:0;
+  .ctlRow{display:flex;align-items:center;gap:12px;pointer-events:auto;opacity:0;
     transition:opacity .2s}
-  #powerRow.on{opacity:1}
-  #powerRow .plbl{font-size:9px;letter-spacing:.24em;text-transform:uppercase;color:#7d7590}
-  #powerRow .pval{font-size:13px;color:#e0b25c;font-variant-numeric:tabular-nums;min-width:38px;
+  body.playing .ctlRow{opacity:1}
+  .ctlRow .plbl{font-size:9px;letter-spacing:.24em;text-transform:uppercase;color:#7d7590;
+    min-width:38px}
+  .ctlRow .pval{font-size:13px;color:#e0b25c;font-variant-numeric:tabular-nums;min-width:38px;
     text-align:right}
+  .elevRow .pval{color:#9fc0d8}
   .pbtn{width:30px;height:30px;border-radius:50%;background:rgba(20,18,28,.5);
     border:1px solid rgba(224,178,92,.4);color:#e0b25c;font:inherit;font-size:17px;line-height:1;
     cursor:pointer;display:flex;align-items:center;justify-content:center;
     -webkit-tap-highlight-color:transparent;user-select:none;transition:all .12s;flex:none}
   .pbtn:hover,.pbtn:active{background:#e0b25c;color:#1b1a24}
-  #power{width:min(230px,40vw);height:6px;background:rgba(233,226,210,.14);border-radius:3px;
-    overflow:hidden}
+  .trk{width:min(230px,40vw);height:6px;background:rgba(233,226,210,.14);border-radius:3px;
+    position:relative}
+  #powerfill{position:relative;z-index:2}
+  /* The ranges that reach ANYTHING from this bearing. Same language as the
+     angle band: gold brackets mean "a shot exists in here". */
+  #powBand{position:absolute;top:-4px;bottom:-4px;left:0;width:0;z-index:3;
+    pointer-events:none;
+    background:rgba(224,178,92,.16);border-left:2px solid rgba(240,200,120,.95);
+    border-right:2px solid rgba(240,200,120,.95);border-radius:2px;
+    transition:left .18s,width .18s,opacity .2s;opacity:0}
+  /* Nothing reaches from here at any range. The answer is to move, so the row
+     says so instead of letting you sweep the dial for nothing. */
+  #powerRow.nosol .plbl::after{content:' 4 nothing in reach';color:#c8443a;
+    letter-spacing:.06em;text-transform:none}
+  #powerRow.nosol .plbl{min-width:0;white-space:nowrap;color:#c8443a}
   #powerfill{height:100%;width:0%;background:linear-gradient(90deg,#7fa86a,#e0b25c 55%,#c8443a);
     transition:width .08s linear}
+  /* Elevation gets the same treatment as range. It used to be reachable only by
+     dragging 280px downward — impossible on a trackpad, and impossible at all
+     if you pressed near the bottom of the window. */
+  .elevRow{margin-top:9px}
+  .elevTrack{position:relative}
+  #elevfill{height:100%;width:0%;background:linear-gradient(90deg,#5f8fb8,#9fc0d8);
+    transition:width .08s linear;position:relative;z-index:2;border-radius:3px}
+  /* The band of angles that actually reach something from here, at this power.
+     Painted UNDER the fill, so you can see whether you are inside it. */
+  #elevBand{position:absolute;top:-4px;bottom:-4px;left:0;width:0;z-index:3;
+    pointer-events:none;
+    background:rgba(224,178,92,.16);border-left:2px solid rgba(240,200,120,.95);
+    border-right:2px solid rgba(240,200,120,.95);border-radius:2px;
+    transition:left .18s,width .18s,opacity .2s;opacity:0}
   #hint{font-size:12px;letter-spacing:.12em;color:#8b83a0;text-align:center;min-height:17px;
-    transition:opacity .3s}
+    transition:opacity .3s;margin-top:8px}
 
   /* ---------- compass ---------- */
-  #compass{position:fixed;left:50%;transform:translateX(-50%);bottom:76px;z-index:19;
+  #compass{position:fixed;left:50%;transform:translateX(-50%);bottom:146px;z-index:19;
     display:flex;pointer-events:none;opacity:.9}
-  .cseg{width:64px;height:3px;background:rgba(233,226,210,.14);margin:0 3px;border-radius:2px;
+  .cseg{width:64px;height:4px;background:rgba(233,226,210,.22);margin:0 3px;border-radius:2px;
     transition:background .25s,height .25s}
   .cseg.on{background:#e0b25c;height:5px}
 
@@ -160,7 +189,8 @@
   #cardBtns{display:flex;gap:10px;flex-wrap:wrap;justify-content:center;margin-top:10px;
     pointer-events:auto}
 
-  #keys{position:fixed;right:20px;bottom:20px;z-index:19;font-size:11px;letter-spacing:.06em;
+  #keys{position:fixed;right:20px;bottom:132px;z-index:19;background:rgba(12,10,20,.34);
+    padding:8px 12px;border-radius:6px;font-size:11px;letter-spacing:.06em;
     color:#8b8399;text-align:right;line-height:1.9;pointer-events:none;
     text-shadow:0 1px 3px rgba(0,0,0,.55)}
   #keys b{color:#d6cfe4;font-weight:400;font-family:ui-monospace,Menlo,Consolas,monospace}
@@ -294,7 +324,7 @@
     #facewrap{padding:0 6px}
     #face{font-size:14px} #facesub{font-size:10px}
     #bottom{padding-bottom:96px}
-    #compass{bottom:110px}
+    #compass{bottom:176px}
   }
 
   /* ---------- the garrison book ---------- */
@@ -350,7 +380,7 @@
   /* One verb at a time, and it waits for you to do it. Sits above the power
      row so it never covers the thing the current step is telling you to use. */
   #coach{position:fixed;left:50%;transform:translateX(-50%) translateY(8px);
-    bottom:108px;z-index:24;width:min(430px,calc(100vw - 36px));
+    bottom:176px;z-index:24;width:min(430px,calc(100vw - 36px));
     background:rgba(16,13,24,.9);border:1px solid rgba(224,178,92,.34);
     border-radius:9px;padding:13px 15px 11px;pointer-events:auto;
     box-shadow:0 10px 34px rgba(0,0,0,.5);opacity:0;visibility:hidden;
@@ -363,6 +393,31 @@
   #coachTitle{font-size:10px;letter-spacing:.24em;text-transform:uppercase;
     color:#e0b25c;margin-bottom:7px}
   #coachBody{font-size:13px;line-height:1.5;color:#ded7ca}
+  /* The instruction, separated from the explanation. On a second read this is
+     the only line you need, so it gets its own plate. */
+  #coachAsk{display:flex;align-items:center;gap:9px;margin-top:11px;
+    background:rgba(224,178,92,.11);border:1px solid rgba(224,178,92,.3);
+    border-radius:6px;padding:8px 11px;font-size:12.5px;color:#f0e4c8}
+  #coachAsk .do{font-size:8px;letter-spacing:.2em;text-transform:uppercase;
+    color:#1b1a24;background:#e0b25c;border-radius:3px;padding:3px 6px;flex:none}
+  #coachAsk b{color:#fff;background:rgba(255,255,255,.14);border-radius:3px;
+    padding:1px 6px;font-weight:600}
+  #coachNext.go{background:#e0b25c;color:#1b1a24;border-color:#e0b25c}
+
+  /* The pointer. A ring on the actual control the step is talking about —
+     without it the whole thing reads as a menu you are meant to read rather
+     than a hand showing you where to look. */
+  #coachHalo{position:fixed;z-index:23;pointer-events:none;opacity:0;
+    border:2px solid #e0b25c;box-shadow:0 0 0 3px rgba(224,178,92,.14),
+      0 0 22px rgba(224,178,92,.35), inset 0 0 18px rgba(224,178,92,.12);
+    transition:left .22s cubic-bezier(.2,.8,.3,1),top .22s cubic-bezier(.2,.8,.3,1),
+      width .22s,height .22s,opacity .2s}
+  #coachHalo.on{opacity:1;animation:haloPulse 1.8s ease-in-out infinite}
+  @keyframes haloPulse{0%,100%{box-shadow:0 0 0 3px rgba(224,178,92,.12),
+      0 0 18px rgba(224,178,92,.28),inset 0 0 14px rgba(224,178,92,.10)}
+    50%{box-shadow:0 0 0 5px rgba(224,178,92,.22),
+      0 0 30px rgba(224,178,92,.5),inset 0 0 22px rgba(224,178,92,.18)}}
+  @media (prefers-reduced-motion:reduce){ #coachHalo.on{animation:none} }
   #coachBody b{color:#fff;background:rgba(224,178,92,.17);border-radius:3px;
     padding:1px 5px;font-weight:600}
   #coachFoot{display:flex;justify-content:space-between;align-items:center;
@@ -377,7 +432,7 @@
     padding:5px 12px;border-radius:4px;cursor:pointer}
   #coachNext:hover{border-color:#e0b25c;color:#e9e2d2}
   body.coaching #keys{opacity:0}
-  @media (max-width:720px){ #coach{bottom:126px} }
+  @media (max-width:720px){ #coach{bottom:196px} }
   @media (prefers-reduced-motion:reduce){ #coach.pop{animation:none} }
   @media (prefers-reduced-motion:reduce){ .spark{animation:none;opacity:.7} }
 </style>
@@ -409,20 +464,29 @@
     </div>
   </div>
   <div id="bottom">
-    <div id="powerRow">
+    <div class="ctlRow" id="powerRow">
       <span class="plbl">Range</span>
       <button class="pbtn" id="powDown">&minus;</button>
-      <div id="power"><div id="powerfill"></div></div>
+      <div class="trk" id="power"><div id="powBand"></div><div id="powerfill"></div></div>
       <button class="pbtn" id="powUp">+</button>
       <span class="pval" id="powVal">80%</span>
+    </div>
+    <div class="ctlRow elevRow">
+      <span class="plbl">Angle</span>
+      <button class="pbtn" id="elevDown">&minus;</button>
+      <div class="trk elevTrack"><div id="elevBand"></div><div id="elevfill"></div></div>
+      <button class="pbtn" id="elevUp">+</button>
+      <span class="pval" id="elevVal">20&deg;</span>
     </div>
     <div id="hint"></div>
   </div>
 </div>
 
+<div id="coachHalo"></div>
 <div id="coach">
   <div id="coachTitle"></div>
   <div id="coachBody"></div>
+  <div id="coachAsk"></div>
   <div id="coachFoot">
     <div id="coachDots"></div>
     <button id="coachNext">Skip</button>

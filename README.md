@@ -22,6 +22,7 @@ Then open **http://localhost:5833**. No build step — three.js r170 and Rapier
 | drag | aim. **Sideways** swings the machine ±24°, **down** raises the arm |
 | wheel / `W` `S` | range (persists between shots) |
 | `1` &ndash; `4` | choose the man on the arm |
+| `&uarr;` / `&darr;` | angle (`Shift` for fine) |
 | `SPACE` | the second tap, once per shot, mid-flight |
 | `C` | change the view |
 | `R` | restart |
@@ -81,9 +82,9 @@ swinging the camera across the field took two seconds and you missed the impact.
 
 | | | | |
 |---|---|---|---|
-| 1 | **Millbrook Tower** | a watchtower and a garden wall | 4 soldiers, 6 knights |
-| 2 | **Harrowgate** | a gatehouse, a thin curtain and a keep | 6 soldiers, 7 knights |
-| 3 | **Blackmere Keep** | the whole enceinte | 9 soldiers, 9 knights |
+| 1 | **Millbrook Tower** | a watchtower and a garden wall | 4 soldiers, 8 knights |
+| 2 | **Harrowgate** | a gatehouse, a thin curtain and a keep | 6 soldiers, 9 knights |
+| 3 | **Blackmere Keep** | the whole enceinte | 9 soldiers, 10 knights |
 | 4 | **Stonefall Priory** | an arcade under a stone roof | 12 soldiers, 10 knights |
 | 5 | **Vantwick on the Sound** | four faces, four answers | 11 soldiers, 10 knights |
 
@@ -95,6 +96,26 @@ Orbit radius and launch speed both scale with the castle. Range goes with the
 SQUARE of speed, so a small level fired at the big castle's speeds cannot reach
 anything close in — the sentry standing in the open on level one had no firing
 solution at all between the 6 and 66 degree limits until speeds were scaled.
+
+## Aiming
+
+Three things tell you where a shot goes, and all three are measured rather than
+guessed:
+
+* the **dotted arc** is a swept ball cast through the real collision world, not
+  a parabola drawn on top of it &mdash; it stops where the knight stops
+* the **gold brackets on the Range bar** are the range settings that reach
+  *anything* from where you are standing. If they vanish, the row says
+  "nothing in reach" and the answer is to move, not to keep sweeping the dial
+* the **gold brackets on the Angle bar** are the angles that reach something at
+  the range you have set
+
+The **gold bracket in the world** marks a keystone: one block per face,
+computed from a static load analysis of the whole castle. It is the block that
+is carrying the most of the building above it relative to its own weight, so
+taking it brings the bay down rather than chipping it.
+
+Blocks darken as they take damage and glow hot when one more hit will do it.
 
 ## Why it is built this way
 

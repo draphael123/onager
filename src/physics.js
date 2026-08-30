@@ -61,6 +61,7 @@ export class Physics {
     this.list = [];           // every live part, in creation order
     this.debris = [];
     this.ragdolls = [];      // groups of jointed parts, oldest culled first
+    this.masonryScale = 1;   // per-level difficulty; see levels.js masonry
     this.bursts = [];        // sapper detonations, drained by the renderer
     this.time = 0;
 
@@ -111,7 +112,10 @@ export class Physics {
       body, col, fixed,
       kind: opts.kind || 'block',
       mat: opts.mat || 'block',
-      hp: (opts.hp != null ? opts.hp : m.hp) * (opts.hpScale || 1),
+      // masonryScale is the level's difficulty dial: it makes every block on
+      // the early castles softer without changing a single dimension, so the
+      // geometry stays exactly as audited and only the resistance moves.
+      hp: (opts.hp != null ? opts.hp : m.hp) * (opts.hpScale || 1) * this.masonryScale,
       maxHp: (opts.hp != null ? opts.hp : m.hp) * (opts.hpScale || 1),
       half: { x: hx, y: hy, z: hz },
       spawnX: x, spawnY: y, spawnZ: z,
@@ -439,6 +443,96 @@ export class Physics {
       if (d2 < w.shore.radius * w.shore.radius) f = Math.min(f, w.shore.factor);
     }
     return f;
+  }
+
+  // ---- what is holding this building up ------------------------------------
+  //
+  // The castles are built around "take a pier, and the bay comes down", but
+  // nothing on screen said WHICH block was the pier. This is a static load
+  // analysis run once per level: for every block, how much of the building
+  // above it does it carry, relative to its own weight.
+  //
+  // It is a heuristic, not a solver — a real one would need the contact graph
+  // and a linear program. What it gets right is the only thing that matters
+  // here: a thin pier under a stone roof scores enormously, and a merlon
+  // sitting on top of a wall scores nothing.
+  analyseStructure(faces) {
+    const ps = this.list.filter(p => !p.fixed && !p.debris
+      && p.kind !== 'soldier' && p.kind !== 'ragdoll' && p.kind !== 'banner'
+      && p.kind !== 'knight' && p.half);
+    const box = (p) => {
+      const t = p.body.translation();
+      return { p, x0: t.x - p.half.x, x1: t.x + p.half.x,
+        y0: t.y - p.half.y, y1: t.y + p.half.y,
+        z0: t.z - p.half.z, z1: t.z + p.half.z,
+        m: p.body.mass() || 0.001 };
+    };
+    const bs = ps.map(box).sort((a, b) => b.y0 - a.y0);      // highest first
+    const TOL = 0.16;                                         // a mortar joint
+
+    // Who holds up whom. Two boxes touch vertically and overlap in plan.
+    for (const b of bs) {
+      b.on = [];
+      for (const c of bs) {
+        if (c === b) continue;
+        if (Math.abs(c.y1 - b.y0) > TOL) continue;
+        if (Math.min(b.x1, c.x1) - Math.max(b.x0, c.x0) <= 0.02) continue;
+        if (Math.min(b.z1, c.z1) - Math.max(b.z0, c.z0) <= 0.02) continue;
+        b.on.push(c);
+      }
+      b.load = b.m;
+    }
+    // Top down, so a block's own load is final before it is passed downward.
+    // A block resting on three supporters gives each a third of what it holds.
+    for (const b of bs) {
+      if (!b.on.length) continue;
+      const share = b.load / b.on.length;
+      for (const c of b.on) c.load += share;
+    }
+
+    let worst = 0;
+    for (const b of bs) {
+      b.p.load = b.load;
+      // Carrying twenty times your own weight is what a pier does; a wall
+      // block in the middle of a course carries two or three.
+      b.p.carries = b.load / b.m;
+      worst = Math.max(worst, b.p.carries);
+    }
+
+    // ONE keystone per FACE, not the global top eight. Ranking globally gave
+    // Millbrook two markers, both on internal floor joists, and nothing at all
+    // on the three walls you can actually shoot — the analysis was right and
+    // the presentation was useless. Per-face means circling the castle reveals
+    // exactly one weak point per wall, which is the premise of the game stated
+    // as a marker.
+    for (const b of bs) b.p.keystone = false;
+    const chosen = [];
+    for (const F of (faces && faces.length ? faces : [{ a: 0 }, { a: Math.PI / 2 },
+      { a: Math.PI }, { a: -Math.PI / 2 }])) {
+      let best = null;
+      for (const b of bs) {
+        if (b.p.carries < 3) continue;                 // carrying nothing much
+        const t = b.p.body.translation();
+        const bearing = Math.atan2(t.x, -t.z);
+        const d = Math.abs(Math.atan2(Math.sin(bearing - F.a), Math.cos(bearing - F.a)));
+        if (d > 0.72) continue;                        // not on this face
+        // Prefer what is carrying most, but a block buried at the very centre
+        // of the castle is not a shot — weight by how far out it stands.
+        const reach = Math.hypot(t.x, t.z);
+        const score = b.p.carries * (0.45 + Math.min(1, reach / 9) * 0.55);
+        if (!best || score > best.score) best = { p: b.p, score };
+      }
+      if (!best) continue;
+      const t = best.p.body.translation();
+      if (chosen.some(c => {
+        const q = c.body.translation();
+        return Math.hypot(q.x - t.x, q.z - t.z) < 1.6;
+      })) continue;
+      best.p.keystone = true;
+      chosen.push(best.p);
+    }
+    this.keystones = chosen;
+    return { analysed: bs.length, keystones: chosen.length, worstCarries: worst };
   }
 
   refreshWardens() {

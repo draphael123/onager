@@ -794,8 +794,13 @@ export class Renderer {
     const stoneMaps = [surfaceTex('stone', 0), surfaceTex('stone', 1), surfaceTex('stone', 2)];
     const woodMaps = [surfaceTex('wood', 0), surfaceTex('wood', 1), surfaceTex('wood', 2)];
 
+    // FOUR tiers, not three. The old top tier was a slightly darker block with
+    // a slightly rougher texture, which at thirty metres is no signal at all —
+    // you could not tell a block that would fall to the next hit from one that
+    // would not. Tier 3 is "one more will do it" and it is deliberately loud:
+    // a hot emissive that survives distance, dust and a dark theme.
     const make = (hex, rough, n, maps) => {
-      const tiers = [[], [], []];
+      const tiers = [[], [], [], []];
       const base = new THREE.Color(hex);
       for (let i = 0; i < n; i++) {
         const c = base.clone();
@@ -803,12 +808,15 @@ export class Renderer {
         c.setHSL(h.h + (Math.random() - 0.5) * 0.035,
           h.s * (0.82 + Math.random() * 0.4),
           h.l * (0.86 + Math.random() * 0.3));
-        for (let t = 0; t < 3; t++) {
+        for (let t = 0; t < 4; t++) {
           const cc = c.clone();
-          if (t) cc.multiplyScalar(1 - t * 0.09);   // damage also darkens
-          tiers[t].push(new THREE.MeshStandardMaterial({
+          if (t) cc.multiplyScalar(1 - t * 0.11);   // damage also darkens
+          const m = new THREE.MeshStandardMaterial({
             color: cc, roughness: rough + t * 0.02, metalness: 0.02,
-            map: maps ? maps[t] : null }));
+            map: maps ? maps[Math.min(2, t)] : null });
+          if (t === 2) { m.emissive = new THREE.Color(0x5c1a08); m.emissiveIntensity = 0.55; }
+          if (t === 3) { m.emissive = new THREE.Color(0xc23a10); m.emissiveIntensity = 1.25; }
+          tiers[t].push(m);
         }
       }
       return tiers;
@@ -981,6 +989,51 @@ export class Renderer {
   // cannot see them at all, and a puzzle whose targets are invisible is not a
   // puzzle. Drawn with depthTest off so it reads through masonry, and with size
   // attenuation off so it stays the same size at any range.
+  // Keystone markers. Built once from phys.keystones, then shown or hidden per
+  // frame by BEARING: only the ones on the face you are looking at. Eight
+  // markers standing round a castle at once is wallpaper; two on the wall in
+  // front of you is a reading of that wall.
+  buildKeystones(keys) {
+    for (const k of this._keyMarks || []) this.scene.remove(k.spr);
+    this._keyMarks = [];
+    for (const p of keys || []) {
+      const spr = new THREE.Sprite(new THREE.SpriteMaterial({
+        map: keystoneTex(), color: 0xf0b24c, transparent: true, opacity: 0,
+        depthTest: false, depthWrite: false, sizeAttenuation: false, fog: false }));
+      spr.scale.set(0.03, 0.03, 1);
+      spr.renderOrder = 19;
+      this.scene.add(spr);
+      this._keyMarks.push({ p, spr });
+    }
+  }
+
+  syncKeystones(aimAngle, dt) {
+    if (!this._keyMarks) return;
+    const on = SET.showWeak !== false;
+    const pulse = 0.72 + Math.sin((this._keyT = (this._keyT || 0) + dt * 2.4)) * 0.22;
+    for (const k of this._keyMarks) {
+      const gone = k.p.dead;
+      const t = gone ? null : k.p.body.translation();
+      // Only what faces you. A bearing test, not a frustum test: the point is
+      // that circling the castle REVEALS each face's weak point in turn.
+      let want = 0;
+      if (on && t) {
+        const bearing = Math.atan2(t.x, -t.z);
+        const d = Math.abs(Math.atan2(Math.sin(bearing - aimAngle), Math.cos(bearing - aimAngle)));
+        if (d < 1.15) want = (1 - d / 1.15) * pulse;
+      }
+      const m = k.spr.material;
+      m.opacity += (want - m.opacity) * Math.min(1, dt * 6);
+      k.spr.visible = m.opacity > 0.02;
+      if (t) k.spr.position.set(t.x, t.y + k.p.half.y + 1.3, t.z);
+      // A keystone that is itself nearly broken is the whole shot. Say so.
+      const hurt = !gone && k.p.maxHp < 1e8 && k.p.hp / k.p.maxHp < 0.42;
+      m.color.setHex(hurt ? 0xff5c28 : 0xf0b24c);
+      const sc = (hurt ? 0.038 : 0.03) * (hurt ? pulse + 0.2 : 1);
+      k.spr.scale.set(sc, sc, 1);
+    }
+  }
+
   _addMarker(p) {
     const mk = new THREE.Sprite(new THREE.SpriteMaterial({
       map: markerTex(), color: 0xff6a4a, transparent: true, opacity: 0.92,
@@ -1036,7 +1089,7 @@ export class Renderer {
     // means nothing has to remember to notify the renderer when a block is hit.
     if (p.matName && p.maxHp < 1e8) {
       const f = p.hp / p.maxHp;
-      const tier = f > 0.66 ? 0 : f > 0.33 ? 1 : 2;
+      const tier = f > 0.7 ? 0 : f > 0.42 ? 1 : f > 0.18 ? 2 : 3;
       if (tier !== p.tier) {
         p.tier = tier;
         m.material = this.pick(p.matName, p.matIdx, tier);
@@ -1320,6 +1373,16 @@ export class Renderer {
         k.position.z += (u.tz - k.position.z) * kx;
       }
     }
+    // The two on the engine breathe too, or the machine looks abandoned the
+    // moment you roll it away from the camp.
+    for (const c of this.crew || []) {
+      const u = c.userData;
+      if (u.mixer) u.mixer.update(dt);
+      else {
+        c.position.y = (u.baseY || 0) + Math.sin(t * 1.6 + (u.phase || 0)) * 0.015;
+        c.rotation.z = Math.sin(t * 0.7 + (u.phase || 0)) * 0.03;
+      }
+    }
     if (this._cheer > 0) this._cheer = Math.max(0, this._cheer - dt);
   }
 
@@ -1406,7 +1469,61 @@ export class Renderer {
     flag.position.set(-1.15, 3.5, -0.9); machine.add(flag);
     this.flag = flag;
 
-    this._camp(g, wood, iron);
+    // The camp is NOT parented to the machine. It is a place on the siege line
+    // that the engine is dragged away from and back to — the whole encampment
+    // swinging round every time you nudged the aim was the single most
+    // dreamlike thing on screen. placeCamp() pins it once per level.
+    const camp = new THREE.Group();
+    this.scene.add(camp);
+    this._camp(camp, wood, iron);
+    this.camp = camp;
+    this._crew(machine);
+  }
+
+  // Two men who DO ride with the engine: a loader at the winch and the man
+  // about to be thrown, stood on the frame. They are the reason the machine
+  // still reads as crewed once the company stays behind at the camp.
+  _crew(machine) {
+    const g = new THREE.Group();
+    machine.add(g);
+    this.crewGroup = g;
+    this.crew = [];
+  }
+
+  // Pin the camp beside the machine's STARTING position and leave it there for
+  // the level. Just off the ring so the engine can be rolled past it.
+  placeCamp(x, z, yaw) {
+    if (!this.camp) return;
+    this.camp.position.set(x, 0, z);
+    this.camp.rotation.y = yaw;
+  }
+
+  // The man on the arm and the man at the winch, rebuilt whenever the type
+  // loaded changes — the machine should show you what is about to be thrown.
+  setCrew(pals, typeA, typeB) {
+    if (!this.crewGroup) return;
+    for (const c of this.crew) {
+      this.crewGroup.remove(c);
+      c.traverse(o => { if (o.isMesh && o.geometry) o.geometry.dispose(); });
+    }
+    this.crew = [];
+    const posts = [
+      { t: typeA, x: -1.55, y: 1.58, z: 0.98, yaw: 1.5 },    // next up, on the frame
+      { t: typeB, x: 1.15, y: 1.58, z: -0.95, yaw: -1.9 },   // at the winch
+    ];
+    for (let i = 0; i < posts.length; i++) {
+      const P = posts[i];
+      if (!P.t) continue;
+      const k = this.knightRig(pals[i % Math.max(1, pals.length)], P.t);
+      k.position.set(P.x, P.y, P.z);
+      k.rotation.y = P.yaw;
+      k.scale.multiplyScalar(0.9);
+      k.userData.baseY = P.y;
+      k.userData.baseYaw = P.yaw;
+      k.userData.phase = i * 2.1;
+      this.crewGroup.add(k);
+      this.crew.push(k);
+    }
   }
 
   // The siege camp, parented to the machine so it travels round the ring with
@@ -1457,7 +1574,7 @@ export class Renderer {
     // The company waits by the arm; buildWaiting() fills this once the game
     // knows how many knights there are and what colours they wear.
     this.waiting = [];
-    this.campGroup = g;
+    this.campGroup = g;   // the fixed camp; see placeCamp()
 
     // Stores.
     for (const [bx, bz, r] of [[-3.2, 2.4, 0], [-3.9, 2.9, 0.5], [-2.4, 3.1, 1.1]]) {
@@ -1971,6 +2088,26 @@ function markerTex() {
   _markerTex = new THREE.CanvasTexture(cv);
   _markerTex.colorSpace = THREE.SRGBColorSpace;
   return _markerTex;
+}
+
+// The keystone glyph. Deliberately not the garrison's chevron: this one is a
+// bracket under a bar — a lintel resting on a support — so at a glance you can
+// tell "there is a man here" from "this is what is holding it up".
+let _keyTex = null;
+function keystoneTex() {
+  if (_keyTex) return _keyTex;
+  const cv = document.createElement('canvas');
+  cv.width = cv.height = 64;
+  const g = cv.getContext('2d');
+  g.fillStyle = '#fff';
+  g.fillRect(10, 12, 44, 9);                       // the load above
+  g.beginPath();                                    // the support beneath it
+  g.moveTo(32, 54); g.lineTo(18, 26); g.lineTo(46, 26); g.closePath(); g.fill();
+  g.globalCompositeOperation = 'destination-out';
+  g.beginPath(); g.moveTo(32, 44); g.lineTo(25, 32); g.lineTo(39, 32); g.closePath(); g.fill();
+  _keyTex = new THREE.CanvasTexture(cv);
+  _keyTex.colorSpace = THREE.SRGBColorSpace;
+  return _keyTex;
 }
 
 function groundTex(theme) {
